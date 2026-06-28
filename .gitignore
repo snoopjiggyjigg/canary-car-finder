@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+# Generated search results
+results/
+logs/
+
+# Office files
+*.xlsx
+*.csv
+
+# Windows
+Thumbs.db
