@@ -40,6 +40,7 @@ Open:
 
 - PlusCar
 - AutoReisen
+- Cicar
 
 ## v1 provider scope
 
