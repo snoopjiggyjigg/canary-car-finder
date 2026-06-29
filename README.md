@@ -36,11 +36,17 @@ Open:
 
 `results/report.html`
 
-## Current provider
+## Current providers
 
 - PlusCar
+- AutoReisen
 
-AutoReisen, Cicar and Payless can be added next using the same provider pattern.
+## v1 provider scope
+
+- PlusCar
+- AutoReisen
+- Cicar
+- Cabrera Medina
 
 ## v1.2 update
 
