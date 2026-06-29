@@ -16,7 +16,7 @@ def setup_logging():
 
 def generate_combinations(settings, mode):
     if mode == "test":
-        return [(settings.start_date, settings.start_date.replace(day=settings.start_date.day + 5), settings.pickup_time, settings.return_time)]
+        return [(settings.start_date, settings.start_date + timedelta(days=5), settings.pickup_time, settings.return_time)]
 
     combos = []
     pickup = settings.start_date
