@@ -2,7 +2,7 @@
 
 Local-only desktop tool. No hosting. No subscriptions. No cloud.
 
-This version is production-ready for **PlusCar first**.
+This version is focused on four trusted Canary Islands providers.
 
 ## What it does
 
@@ -12,7 +12,7 @@ This version is production-ready for **PlusCar first**.
   - min/max hire days
   - pickup/return times
   - headless or visible browser
-- Searches PlusCar Fuerteventura Airport
+- Searches trusted Fuerteventura Airport providers
 - Finds prices from `Total: xxx €`
 - Shows live progress
 - Saves:
@@ -41,13 +41,16 @@ Open:
 - PlusCar
 - AutoReisen
 - Cicar
+- Payless Car
 
 ## v1 provider scope
 
 - PlusCar
 - AutoReisen
 - Cicar
-- Cabrera Medina
+- Payless Car
+
+Canary Car Finder v1 intentionally supports only these four trusted providers. No additional providers are planned for v1.
 
 ## v1.2 update
 
