@@ -1,3 +1,13 @@
+# v1.1.0
+
+- Added polished CustomTkinter Windows desktop app
+- Added saved search preferences
+- Added About dialog and app metadata
+- Added Buy me an Estrella support section
+- Added PyInstaller packaging
+- Created local release build
+- Confirmed all four providers run successfully from the GUI
+
 # v1.0.0
 
 ## Initial Release
