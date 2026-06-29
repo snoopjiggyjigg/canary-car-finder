@@ -48,10 +48,12 @@ class PaylessProvider(CarProvider):
         if self.playwright:
             self.playwright.stop()
 
+    def adjust_times(self, pickup_time, return_time):
+        return _supported_time_text(pickup_time), _supported_time_text(return_time)
+
     def search(self, pickup, dropoff, pickup_time, return_time, index):
         days_elapsed = (dropoff - pickup).days
-        actual_pickup_time = _supported_time_text(pickup_time)
-        actual_return_time = _supported_time_text(return_time)
+        actual_pickup_time, actual_return_time = self.adjust_times(pickup_time, return_time)
         try:
             self._search_site(pickup, dropoff, actual_pickup_time, actual_return_time)
             self.page.screenshot(path=str(DEBUG / f"payless_{index:03d}_results.png"), full_page=True)

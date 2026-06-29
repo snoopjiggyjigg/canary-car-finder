@@ -6,6 +6,7 @@ import pandas as pd
 from app_config import load_app_config
 
 RESULTS = Path("results")
+PROVIDER_ORDER = {"PlusCar": 0, "AutoReisen": 1, "Cicar": 2, "Payless Car": 3}
 EXPORT_COLUMNS = [
     "provider",
     "pickup",
@@ -114,6 +115,7 @@ def _render_html(df, progress):
         .best-table {{ overflow:auto; border:1px solid var(--line); border-radius:8px; background:white; box-shadow:0 8px 24px rgba(29, 45, 43, .08); }}
         .best-table table {{ min-width:1060px; }}
         .book {{ display:inline-block; background:var(--accent); color:white; text-decoration:none; font-weight:900; padding:8px 11px; border-radius:8px; white-space:nowrap; }}
+        .time-pair {{ display:inline-block; line-height:1.35; font-size:13px; color:var(--muted); }}
         .calendar {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px; margin-bottom:24px; }}
         .calendar a {{ border:1px solid var(--line); border-radius:8px; padding:12px; color:var(--ink); text-decoration:none; background:white; }}
         .calendar .green {{ background:#e1f4ea; border-color:#9bd3b1; }}
@@ -174,6 +176,7 @@ def _render_html(df, progress):
           {_status_pill(progress)}
         </div>
         {_progress_html(progress)}
+        {_holiday_summary_html(df, progress)}
         {_stats_html(df)}
         {_hero_html(df)}
         {_best_holidays_html(df)}
@@ -235,6 +238,7 @@ def _progress_html(progress):
 
 def _stats_html(df):
     successful = _successful(df)
+    failed = len(df) - len(successful)
     best = successful.iloc[0] if not successful.empty else None
     best_provider = _best_provider(successful)
     cheapest_auto = _cheapest_by_transmission(successful, "Automatic")
@@ -261,11 +265,43 @@ def _stat(label, value):
     return f"<div class='stat'><div class='stat-label'>{escape(label)}</div><div class='stat-value'>{value}</div></div>"
 
 
+def _holiday_summary_html(df, progress):
+    summary = (progress or {}).get("summary") or {}
+    if not summary:
+        return ""
+    successful = _successful(df)
+    failed = len(df) - len(successful)
+    average = successful["price"].mean() if not successful.empty else None
+    cheapest = successful["price"].min() if not successful.empty else None
+    saving = float(average - cheapest) if average and cheapest else None
+    return f"""
+      <div class='section-title'><h2>Holiday Summary</h2><span class='subtitle'>Search scope and outcome</span></div>
+      <section class='stats'>
+        {_stat("Holiday Window", escape(str(summary.get("holiday_window", "N/A"))))}
+        {_stat("Trip Length Range", escape(str(summary.get("trip_length_range", "N/A"))))}
+        {_stat("Pickup Time Options", escape(str(summary.get("pickup_time_options", "N/A"))))}
+        {_stat("Return Time Options", escape(str(summary.get("return_time_options", "N/A"))))}
+        {_stat("Date Combinations", str(summary.get("date_combinations_generated", 0)))}
+        {_stat("Time Combinations", str(summary.get("time_combinations_generated", 0)))}
+        {_stat("Total Combinations", str(summary.get("total_combinations_generated", 0)))}
+        {_stat("Duplicates Removed", str(summary.get("duplicate_searches_removed", 0)))}
+        {_stat("Provider Searches", str(summary.get("provider_searches_completed", 0)))}
+        {_stat("Successful Searches", str(len(successful)))}
+        {_stat("Failed Searches", str(failed))}
+        {_stat("Search Duration", _duration(summary.get("search_duration_seconds")))}
+        {_stat("Best Provider", _best_provider(successful))}
+        {_stat("Cheapest Holiday", _result_label(successful.iloc[0] if not successful.empty else None))}
+        {_stat("Average Price", _format_euro(average))}
+        {_stat("Potential Saving Vs Average", _format_euro(saving))}
+      </section>
+    """
+
+
 def _best_holidays_html(df):
     successful = _successful(df).head(20)
     if successful.empty:
         return """
-          <div class='section-title'><h2>Best Holidays</h2><span class='subtitle'>Awaiting successful prices</span></div>
+          <div class='section-title'><h2>Top 20 Best Holidays</h2><span class='subtitle'>Awaiting successful prices</span></div>
           <div class='best-table'><table><tbody><tr><td>No ranked holidays yet.</td></tr></tbody></table></div>
         """
 
@@ -280,9 +316,11 @@ def _best_holidays_html(df):
               <td>{index}</td>
               <td>{escape(_text(row.get("provider"), ""))}</td>
               <td>{escape(_text(row.get("vehicle"), "Vehicle unavailable"))}</td>
-              <td>{escape(_text(row.get("pickup"), ""))}</td>
-              <td>{escape(_text(row.get("dropoff"), ""))}</td>
+              <td>{_date_text(row.get("pickup"))}</td>
+              <td>{_date_text(row.get("dropoff"))}</td>
               <td>{int(row.get("days_elapsed")) if not pd.isna(row.get("days_elapsed")) else "N/A"}</td>
+              <td>{_time_html(row, "pickup")}</td>
+              <td>{_time_html(row, "return")}</td>
               <td>{_format_euro(row.get("price"))}</td>
               <td>{_format_euro(row.get("effective_daily"))}</td>
               <td>{_format_euro(saving) if saving and saving > 0.009 else "N/A"}</td>
@@ -291,10 +329,10 @@ def _best_holidays_html(df):
             """
         )
     return f"""
-      <div class='section-title'><h2>Best Holidays</h2><span class='subtitle'>Top 20 ranked by total price, then daily price</span></div>
+      <div class='section-title'><h2>Top 20 Best Holidays</h2><span class='subtitle'>Ranked by total price, daily price, then provider preference</span></div>
       <div class='best-table'>
         <table>
-          <thead><tr><th>Rank</th><th>Provider</th><th>Vehicle</th><th>Departure</th><th>Return</th><th>Trip</th><th>Total</th><th>Daily</th><th>Saves vs next</th><th>Book</th></tr></thead>
+          <thead><tr><th>Rank</th><th>Provider</th><th>Vehicle</th><th>Departure</th><th>Return</th><th>Trip</th><th>Pickup</th><th>Return time</th><th>Total</th><th>Daily</th><th>Saves vs next</th><th>Book</th></tr></thead>
           <tbody>{"".join(rows)}</tbody>
         </table>
       </div>
@@ -316,7 +354,7 @@ def _price_calendar_html(df):
         band = "green" if ratio <= 0.33 else "yellow" if ratio <= 0.66 else "red"
         pickup = _text(row.get("pickup"), "")
         cells.append(
-            f"<a class='{band}' href='#depart-{escape(pickup)}'><div class='cal-date'>{escape(pickup)}</div><div class='cal-price'>{_format_euro(row.get('price'))}</div></a>"
+            f"<a class='{band}' href='#depart-{_date_id(pickup)}'><div class='cal-date'>{_date_text(pickup)}</div><div class='cal-price'>{_format_euro(row.get('price'))}</div></a>"
         )
     return f"""
       <div class='section-title'><h2>Price Calendar</h2><span class='subtitle'>Cheapest result found by departure date</span></div>
@@ -370,7 +408,7 @@ def _hero_html(df):
           <div>
             <div class='eyebrow'>Cheapest confirmed option</div>
             <h2>{escape(_text(best.get("vehicle"), "Vehicle unavailable"))}</h2>
-            <p class='winner-meta'>{escape(_text(best.get("provider"), "Provider"))} from {escape(_text(best.get("pickup"), ""))} {_time_html(best, "pickup")} to {escape(_text(best.get("dropoff"), ""))} {_time_html(best, "return")}</p>
+            <p class='winner-meta'>{escape(_text(best.get("provider"), "Provider"))} from {_date_text(best.get("pickup"))} {_time_html(best, "pickup")} to {_date_text(best.get("dropoff"))} {_time_html(best, "return")}</p>
           </div>
           <div class='winner-price'>{_format_euro(best.get("price"))}</div>
         </div>
@@ -405,7 +443,7 @@ def _card_html(row, cheapest, next_cheapest):
     badge = f"<div class='badge'>{escape(badge_text)}</div>" if badge_text else ""
     comparison = _comparison(price, cheapest, next_cheapest, success)
     return f"""
-      <article class='card {card_class}' id='depart-{escape(_text(row.get("pickup"), ""))}'>
+      <article class='card {card_class}' id='depart-{_date_id(row.get("pickup"))}'>
         <div class='media'>
           {_image_html(image, vehicle)}
           {_logo_html(logo, provider)}
@@ -414,7 +452,7 @@ def _card_html(row, cheapest, next_cheapest):
         <div class='card-body'>
           <div>
             <h3>{escape(vehicle)}</h3>
-            <div class='route'>{escape(provider)} &middot; {escape(_text(row.get("pickup"), ""))} {_time_html(row, "pickup")} to {escape(_text(row.get("dropoff"), ""))} {_time_html(row, "return")}</div>
+            <div class='route'>{escape(provider)} &middot; {_date_text(row.get("pickup"))} {_time_html(row, "pickup")} to {_date_text(row.get("dropoff"))} {_time_html(row, "return")}</div>
             <div class='route'>{_vehicle_meta(row)}</div>
           </div>
           <div class='price-line'>
@@ -477,7 +515,7 @@ def _vehicle_meta(row):
         parts.append(str(transmission))
     if not pd.isna(vehicle_type) and vehicle_type:
         parts.append(str(vehicle_type))
-    return escape(" · ".join(parts) if parts else "Seats, transmission, and class unavailable")
+    return escape(" / ".join(parts) if parts else "Seats, transmission, and class unavailable")
 
 
 def _booking_link(row):
@@ -491,8 +529,8 @@ def _anchor(row):
     return "-".join(
         [
             _text(row.get("provider"), "provider").lower().replace(" ", "-"),
-            _text(row.get("pickup"), "pickup"),
-            _text(row.get("dropoff"), "dropoff"),
+            _date_id(row.get("pickup")),
+            _date_id(row.get("dropoff")),
         ]
     )
 
@@ -500,6 +538,10 @@ def _anchor(row):
 def _table_html(df):
     export_columns = [column for column in EXPORT_COLUMNS if column in df.columns]
     table_df = df[export_columns] if export_columns else df
+    table_df = table_df.copy()
+    for column in ["pickup", "dropoff"]:
+        if column in table_df.columns:
+            table_df[column] = table_df[column].map(_date_text)
     return table_df.to_html(index=False, escape=False)
 
 
@@ -534,7 +576,13 @@ def _successful(df):
     successful = df[df["success"] == True]
     if successful.empty:
         return successful
-    return successful.sort_values(["price", "effective_daily"], ascending=[True, True], na_position="last")
+    successful = successful.copy()
+    successful["_provider_rank"] = successful["provider"].map(PROVIDER_ORDER).fillna(99)
+    return successful.sort_values(
+        ["price", "effective_daily", "_provider_rank"],
+        ascending=[True, True, True],
+        na_position="last",
+    )
 
 
 def _saving_vs_most_expensive(df):
@@ -577,7 +625,11 @@ def _combination_count(df):
 def _provider_win_counts(successful):
     if successful.empty:
         return {}
-    winners = successful.sort_values(["price", "effective_daily"], ascending=[True, True], na_position="last")
+    winners = successful.sort_values(
+        ["price", "effective_daily", "_provider_rank"],
+        ascending=[True, True, True],
+        na_position="last",
+    )
     winners = winners.groupby(["pickup", "dropoff"], as_index=False).first()
     counts = winners["provider"].value_counts().to_dict()
     return {str(provider): int(count) for provider, count in counts.items()}
@@ -588,7 +640,7 @@ def _cheapest_departure(successful):
         return "N/A"
     by_day = successful.groupby("pickup", as_index=False)["price"].min().sort_values("price")
     row = by_day.iloc[0]
-    return f"{escape(_text(row.get('pickup'), 'N/A'))}<br>{_format_euro(row.get('price'))}"
+    return f"{_date_text(row.get('pickup'))}<br>{_format_euro(row.get('price'))}"
 
 
 def _cheapest_trip_length(successful):
@@ -604,6 +656,38 @@ def _format_euro(value):
     return "N/A" if pd.isna(value) else f"&euro;{float(value):.2f}"
 
 
+def _date_text(value):
+    if pd.isna(value) or value is None:
+        return "N/A"
+    try:
+        return pd.Timestamp(value).strftime("%d/%m/%Y")
+    except Exception:
+        return escape(str(value))
+
+
+def _date_id(value):
+    if pd.isna(value) or value is None:
+        return "date-na"
+    try:
+        return pd.Timestamp(value).strftime("%d%m%Y")
+    except Exception:
+        return "".join(character for character in str(value) if character.isalnum()) or "date-na"
+
+
+def _duration(seconds):
+    if seconds is None:
+        return "N/A"
+    try:
+        seconds = float(seconds)
+    except (TypeError, ValueError):
+        return "N/A"
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes = int(seconds // 60)
+    remainder = int(seconds % 60)
+    return f"{minutes}m {remainder}s"
+
+
 def _text(value, fallback):
     return fallback if pd.isna(value) or value is None else str(value)
 
@@ -611,9 +695,12 @@ def _text(value, fallback):
 def _time_html(row, kind):
     actual = _text(row.get(f"actual_{kind}_time"), _text(row.get(f"{kind}_time"), ""))
     requested = _text(row.get(f"requested_{kind}_time"), actual)
-    if requested and actual and requested != actual:
-        return f"{escape(actual)} <span title='Requested time'>(requested {escape(requested)})</span>"
-    return escape(actual)
+    if not actual and not requested:
+        return "N/A"
+    return (
+        f"<span class='time-pair'>Requested {escape(requested or 'N/A')}<br>"
+        f"Actual searched {escape(actual or 'N/A')}</span>"
+    )
 
 
 def _initials(value):

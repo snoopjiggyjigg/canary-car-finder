@@ -1,7 +1,8 @@
-from datetime import timedelta
 from pathlib import Path
 import logging
 import sys
+
+from optimizer import raw_combinations
 
 def setup_logging():
     Path("logs").mkdir(exist_ok=True)
@@ -15,21 +16,7 @@ def setup_logging():
     )
 
 def generate_combinations(settings, mode):
-    if mode == "single":
-        return [(settings.start_date, settings.end_date, settings.pickup_time, settings.return_time)]
-
-    if mode == "test":
-        return [(settings.start_date, settings.start_date + timedelta(days=5), settings.pickup_time, settings.return_time)]
-
-    combos = []
-    pickup = settings.start_date
-    while pickup < settings.end_date:
-        dropoff = pickup + timedelta(days=settings.min_days)
-        while dropoff <= settings.end_date and (dropoff - pickup).days <= settings.max_days:
-            rtime = settings.final_return_time if dropoff == settings.end_date else settings.return_time
-            combos.append((pickup, dropoff, settings.pickup_time, rtime))
-            dropoff += timedelta(days=1)
-        pickup += timedelta(days=1)
+    combos = raw_combinations(settings, mode)
 
     if mode == "small":
         return combos[:10]

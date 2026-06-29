@@ -1,3 +1,4 @@
+import calendar
 from copy import replace
 from datetime import date
 import json
@@ -20,7 +21,8 @@ ctk = None
 
 
 USER_SETTINGS_PATH = Path("config/user_settings.json")
-TIME_OPTIONS = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in (0, 30)]
+PICKUP_TIME_OPTIONS = ["09:00", "10:30", "11:00", "12:00", "13:00"]
+RETURN_TIME_OPTIONS = ["16:30", "17:30", "18:00", "19:00"]
 TRANSMISSIONS = ["Any", "Manual", "Automatic"]
 SEARCH_MODES = ["Single Search", "Holiday Optimiser"]
 SEAT_OPTIONS = ["Any", "2+", "4+", "5+", "7+", "9+"]
@@ -66,8 +68,12 @@ class CanaryCarFinderApp:
         self.return_date_var = ctk.StringVar(
             value=self.user_settings.get("return_date", self.settings.end_date.isoformat())
         )
+        self.pickup_date_display_var = ctk.StringVar(value=_display_date(self.pickup_date_var.get()))
+        self.return_date_display_var = ctk.StringVar(value=_display_date(self.return_date_var.get()))
         self.pickup_time_var = ctk.StringVar(value=self.user_settings.get("pickup_time", self.settings.pickup_time))
         self.return_time_var = ctk.StringVar(value=self.user_settings.get("return_time", self.settings.final_return_time))
+        self.pickup_time_vars = self._time_vars("pickup_times", PICKUP_TIME_OPTIONS, self.pickup_time_var.get())
+        self.return_time_vars = self._time_vars("return_times", RETURN_TIME_OPTIONS, self.return_time_var.get())
         self.min_days_var = ctk.StringVar(value=str(self.user_settings.get("min_days", self.settings.min_days)))
         self.max_days_var = ctk.StringVar(value=str(self.user_settings.get("max_days", self.settings.max_days)))
         self.transmission_var = ctk.StringVar(value=self.user_settings.get("transmission", TRANSMISSIONS[0]))
@@ -183,29 +189,34 @@ class CanaryCarFinderApp:
         self.date_help_var = ctk.StringVar()
         self.length_help_var = ctk.StringVar()
 
-        self._entry(form, "Pickup / earliest departure date", self.pickup_date_var, 3)
-        self._entry(form, "Return / latest return date", self.return_date_var, 4)
+        self._section_label(form, "Holiday Window", 3)
+        self._date_picker(form, "Earliest departure", self.pickup_date_var, self.pickup_date_display_var, 4)
+        self._date_picker(form, "Latest return", self.return_date_var, self.return_date_display_var, 5)
         ctk.CTkLabel(
             form,
             textvariable=self.date_help_var,
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=12),
             wraplength=320,
-        ).grid(row=9, column=0, padx=26, pady=(0, 10), sticky="w")
-        self._entry(form, "Minimum trip length", self.min_days_var, 6)
-        self._entry(form, "Maximum trip length", self.max_days_var, 7)
+        ).grid(row=11, column=0, padx=26, pady=(0, 10), sticky="w")
+        self._section_label(form, "Trip Length", 12)
+        self._entry(form, "Minimum trip length", self.min_days_var, 7)
+        self._entry(form, "Maximum trip length", self.max_days_var, 8)
         ctk.CTkLabel(
             form,
             textvariable=self.length_help_var,
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=12),
             wraplength=320,
-        ).grid(row=15, column=0, padx=26, pady=(0, 10), sticky="w")
-        self._option(form, "Pickup time", self.pickup_time_var, TIME_OPTIONS, 9)
-        self._option(form, "Return time", self.return_time_var, TIME_OPTIONS, 10)
-        self._option(form, "Transmission", self.transmission_var, TRANSMISSIONS, 11)
-        self._option(form, "Vehicle seats", self.vehicle_seats_var, SEAT_OPTIONS, 12)
-        self._option(form, "Vehicle type", self.vehicle_type_var, VEHICLE_TYPES, 13)
+        ).grid(row=17, column=0, padx=26, pady=(0, 10), sticky="w")
+        self._section_label(form, "Time Optimisation", 18)
+        self._time_checks(form, "Pickup Times", self.pickup_time_vars, 10)
+        self._time_checks(form, "Return Times", self.return_time_vars, 11)
+        self._section_label(form, "Vehicle Filters", 24)
+        self._option(form, "Transmission", self.transmission_var, TRANSMISSIONS, 13)
+        self._option(form, "Vehicle seats", self.vehicle_seats_var, SEAT_OPTIONS, 14)
+        self._option(form, "Vehicle type", self.vehicle_type_var, VEHICLE_TYPES, 15)
+        self._section_label(form, "Search Options", 31)
 
         browser_toggle = ctk.CTkSwitch(
             form,
@@ -218,7 +229,7 @@ class CanaryCarFinderApp:
             text_color=COLORS["ink"],
             font=ctk.CTkFont(size=13),
         )
-        browser_toggle.grid(row=28, column=0, padx=26, pady=(10, 18), sticky="w")
+        browser_toggle.grid(row=32, column=0, padx=26, pady=(10, 18), sticky="w")
 
         self.search_button = ctk.CTkButton(
             form,
@@ -231,7 +242,7 @@ class CanaryCarFinderApp:
             font=ctk.CTkFont(size=20, weight="bold"),
             command=self._start_search,
         )
-        self.search_button.grid(row=29, column=0, padx=26, pady=(8, 26), sticky="ew")
+        self.search_button.grid(row=33, column=0, padx=26, pady=(8, 26), sticky="ew")
         self._update_mode_help()
 
         content = ctk.CTkFrame(body, fg_color="transparent")
@@ -343,6 +354,32 @@ class CanaryCarFinderApp:
         )
         field.grid(row=row * 2, column=0, padx=26, pady=(0, 14), sticky="ew")
 
+    def _section_label(self, parent, label, row):
+        ctk.CTkLabel(
+            parent,
+            text=label,
+            text_color=COLORS["ocean"],
+            font=ctk.CTkFont(size=15, weight="bold"),
+        ).grid(row=row, column=0, padx=26, pady=(12, 8), sticky="w")
+
+    def _date_picker(self, parent, label, iso_variable, display_variable, row):
+        ctk.CTkLabel(parent, text=label, text_color=COLORS["ink"], font=ctk.CTkFont(size=13, weight="bold")).grid(
+            row=row * 2 - 1, column=0, padx=26, pady=(4, 5), sticky="w"
+        )
+        button = ctk.CTkButton(
+            parent,
+            textvariable=display_variable,
+            height=42,
+            corner_radius=10,
+            fg_color="#fbfdfd",
+            hover_color=COLORS["sand"],
+            border_color=COLORS["line"],
+            border_width=1,
+            text_color=COLORS["ink"],
+            command=lambda: self._open_calendar(iso_variable, display_variable),
+        )
+        button.grid(row=row * 2, column=0, padx=26, pady=(0, 14), sticky="ew")
+
     def _option(self, parent, label, variable, values, row):
         ctk.CTkLabel(parent, text=label, text_color=COLORS["ink"], font=ctk.CTkFont(size=13, weight="bold")).grid(
             row=row * 2 - 1, column=0, padx=26, pady=(4, 5), sticky="w"
@@ -358,6 +395,83 @@ class CanaryCarFinderApp:
             button_hover_color=COLORS["sun"],
         )
         menu.grid(row=row * 2, column=0, padx=26, pady=(0, 14), sticky="ew")
+
+    def _time_checks(self, parent, label, variables, row):
+        ctk.CTkLabel(parent, text=label, text_color=COLORS["ink"], font=ctk.CTkFont(size=13, weight="bold")).grid(
+            row=row * 2 - 1, column=0, padx=26, pady=(4, 5), sticky="w"
+        )
+        frame = ctk.CTkFrame(parent, fg_color="#fbfdfd", border_color=COLORS["line"], border_width=1, corner_radius=10)
+        frame.grid(row=row * 2, column=0, padx=26, pady=(0, 14), sticky="ew")
+        frame.grid_columnconfigure((0, 1), weight=1)
+        for index, (time_value, variable) in enumerate(variables.items()):
+            checkbox = ctk.CTkCheckBox(
+                frame,
+                text=time_value,
+                variable=variable,
+                onvalue=True,
+                offvalue=False,
+            )
+            checkbox.grid(row=index // 2, column=index % 2, padx=12, pady=8, sticky="w")
+
+    def _open_calendar(self, iso_variable, display_variable):
+        selected = date.fromisoformat(iso_variable.get())
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Select date")
+        dialog.geometry("340x360")
+        dialog.resizable(False, False)
+        dialog.configure(fg_color=COLORS["sky"])
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        state = {"year": selected.year, "month": selected.month}
+        panel = ctk.CTkFrame(dialog, fg_color=COLORS["panel"], corner_radius=12)
+        panel.pack(fill="both", expand=True, padx=16, pady=16)
+
+        header = ctk.CTkFrame(panel, fg_color="transparent")
+        header.pack(fill="x", padx=10, pady=(12, 8))
+        title = ctk.CTkLabel(header, text="", font=ctk.CTkFont(size=16, weight="bold"))
+        title.pack(side="left", expand=True)
+
+        grid = ctk.CTkFrame(panel, fg_color="transparent")
+        grid.pack(fill="both", expand=True, padx=10, pady=10)
+
+        def choose(day):
+            picked = date(state["year"], state["month"], day)
+            iso_variable.set(picked.isoformat())
+            display_variable.set(_display_date(picked.isoformat()))
+            dialog.destroy()
+
+        def render():
+            for child in grid.winfo_children():
+                child.destroy()
+            title.configure(text=f"{calendar.month_name[state['month']]} {state['year']}")
+            for col, day_name in enumerate(["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]):
+                ctk.CTkLabel(grid, text=day_name, text_color=COLORS["muted"]).grid(row=0, column=col, padx=2, pady=2)
+            for row_index, week in enumerate(calendar.monthcalendar(state["year"], state["month"]), start=1):
+                for col, day in enumerate(week):
+                    if not day:
+                        ctk.CTkLabel(grid, text="").grid(row=row_index, column=col, padx=2, pady=2)
+                        continue
+                    ctk.CTkButton(grid, text=str(day), width=36, height=30, command=lambda value=day: choose(value)).grid(
+                        row=row_index, column=col, padx=2, pady=2
+                    )
+
+        def move(month_delta):
+            month = state["month"] + month_delta
+            year = state["year"]
+            if month < 1:
+                month = 12
+                year -= 1
+            elif month > 12:
+                month = 1
+                year += 1
+            state["month"] = month
+            state["year"] = year
+            render()
+
+        ctk.CTkButton(header, text="<", width=36, command=lambda: move(-1)).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(header, text=">", width=36, command=lambda: move(1)).pack(side="right", padx=(8, 0))
+        render()
 
     def _start_search(self):
         if self.search_running:
@@ -387,7 +501,7 @@ class CanaryCarFinderApp:
             pickup = date.fromisoformat(self.pickup_date_var.get().strip())
             dropoff = date.fromisoformat(self.return_date_var.get().strip())
         except ValueError as exc:
-            raise ValueError("Use dates in YYYY-MM-DD format.") from exc
+            raise ValueError("Choose valid dates using the calendar picker.") from exc
 
         if dropoff <= pickup:
             raise ValueError("Return date must be after pickup date.")
@@ -424,6 +538,11 @@ class CanaryCarFinderApp:
         search_settings.transmission = self.transmission_var.get()
         search_settings.vehicle_seats = self.vehicle_seats_var.get()
         search_settings.vehicle_type = self.vehicle_type_var.get()
+        search_settings.pickup_times = self._selected_times(self.pickup_time_vars, "pickup")
+        search_settings.return_times = self._selected_times(self.return_time_vars, "return")
+        search_settings.pickup_time = search_settings.pickup_times[0]
+        search_settings.return_time = search_settings.return_times[0]
+        search_settings.final_return_time = search_settings.return_times[0]
         return search_settings, mode
 
     def _run_search(self, search_settings, mode):
@@ -590,6 +709,8 @@ class CanaryCarFinderApp:
             "return_date": self.return_date_var.get().strip(),
             "pickup_time": self.pickup_time_var.get(),
             "return_time": self.return_time_var.get(),
+            "pickup_times": self._selected_times(self.pickup_time_vars, "pickup"),
+            "return_times": self._selected_times(self.return_time_vars, "return"),
             "min_days": self.min_days_var.get().strip(),
             "max_days": self.max_days_var.get().strip(),
             "search_mode": self.search_mode_var.get(),
@@ -608,6 +729,19 @@ class CanaryCarFinderApp:
         else:
             self.date_help_var.set("Holiday Optimiser searches every valid trip inside this date window.")
             self.length_help_var.set("Every trip length between these limits is searched across all providers.")
+
+    def _time_vars(self, name, options, fallback):
+        selected = set(self.user_settings.get(name) or [fallback])
+        return {time_value: ctk.BooleanVar(value=time_value in selected) for time_value in options}
+
+    def _selected_times(self, variables, label):
+        selected = [time_value for time_value, variable in variables.items() if variable.get()]
+        if not selected:
+            raise ValueError(f"Select at least one {label} time.")
+        return selected
+
+def _display_date(value):
+    return date.fromisoformat(str(value)).strftime("%d/%m/%Y")
 
 
 def main():

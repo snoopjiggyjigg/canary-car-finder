@@ -32,10 +32,12 @@ class AutoReisenProvider(CarProvider):
     def close(self):
         pass
 
+    def adjust_times(self, pickup_time, return_time):
+        return _nearest_supported_time(pickup_time), _nearest_supported_time(return_time)
+
     def search(self, pickup, dropoff, pickup_time, return_time, index):
         days_elapsed = (dropoff - pickup).days
-        actual_pickup_time = _nearest_supported_time(pickup_time)
-        actual_return_time = _nearest_supported_time(return_time)
+        actual_pickup_time, actual_return_time = self.adjust_times(pickup_time, return_time)
         try:
             html = self._quote_html(pickup, dropoff, actual_pickup_time, actual_return_time)
             (DEBUG / f"autoreisen_{index:03d}_results.html").write_text(html, encoding="utf-8")

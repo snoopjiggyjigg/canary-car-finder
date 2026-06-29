@@ -74,6 +74,9 @@ class CarProvider(ABC):
     def search(self, pickup, dropoff, pickup_time, return_time, index):
         raise NotImplementedError
 
+    def adjust_times(self, pickup_time, return_time):
+        return pickup_time, return_time
+
 
 def _infer_seats(vehicle):
     text = str(vehicle or "").lower()
