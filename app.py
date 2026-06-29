@@ -26,7 +26,6 @@ USER_SETTINGS_PATH = Path("config/user_settings.json")
 PICKUP_TIME_OPTIONS = ["09:00", "10:30", "11:00", "12:00", "13:00"]
 RETURN_TIME_OPTIONS = ["16:30", "17:30", "18:00", "19:00"]
 TRANSMISSIONS = ["Any", "Manual", "Automatic"]
-SEARCH_MODES = ["Single Search", "Holiday Optimiser"]
 SEARCH_PRESETS = ["Quick Search", "Holiday Optimiser", "Deep Search"]
 CACHE_MODE_OPTIONS = list(CACHE_MODES.keys())
 SEAT_OPTIONS = ["Any", "2+", "4+", "5+", "7+", "9+"]
@@ -62,8 +61,8 @@ class CanaryCarFinderApp:
 
         self.root = ctk.CTk()
         self.root.title("Canary Car Finder")
-        self.root.geometry("1080x760")
-        self.root.minsize(920, 680)
+        self.root.geometry("1160x800")
+        self.root.minsize(1040, 760)
         self.root.configure(fg_color=COLORS["sky"])
 
         self.pickup_date_var = ctk.StringVar(
@@ -111,113 +110,76 @@ class CanaryCarFinderApp:
 
     def _build_layout(self):
         self.root.grid_columnconfigure(0, weight=1)
-        self.root.grid_rowconfigure(1, weight=1)
+        self.root.grid_rowconfigure(0, weight=1)
 
-        self._build_header()
         self._build_body()
         self._build_footer()
 
-    def _build_header(self):
-        header = ctk.CTkFrame(self.root, fg_color=COLORS["deep_ocean"], corner_radius=0)
-        header.grid(row=0, column=0, sticky="ew")
-        header.grid_columnconfigure(0, weight=1)
-
-        title_block = ctk.CTkFrame(header, fg_color="transparent")
-        title_block.grid(row=0, column=0, padx=34, pady=26, sticky="w")
-
-        ctk.CTkLabel(
-            title_block,
-            text="Canary Car Finder",
-            text_color="white",
-            font=ctk.CTkFont(size=34, weight="bold"),
-        ).grid(row=0, column=0, sticky="w")
-        ctk.CTkLabel(
-            title_block,
-            text="Compare four trusted Canary Islands car hire companies.",
-            text_color="#d8f2f5",
-            font=ctk.CTkFont(size=16),
-        ).grid(row=1, column=0, pady=(6, 0), sticky="w")
-
-        about_button = ctk.CTkButton(
-            header,
-            text="About",
-            width=96,
-            height=36,
-            fg_color="#ffffff",
-            hover_color=COLORS["sand"],
-            text_color=COLORS["deep_ocean"],
-            command=self._show_about,
-        )
-        about_button.grid(row=0, column=1, padx=(0, 12), pady=26, sticky="e")
-
-        help_button = ctk.CTkButton(
-            header,
-            text="Help",
-            width=96,
-            height=36,
-            fg_color="#ffffff",
-            hover_color=COLORS["sand"],
-            text_color=COLORS["deep_ocean"],
-            command=self._show_help,
-        )
-        help_button.grid(row=0, column=2, padx=(0, 34), pady=26, sticky="e")
-
     def _build_body(self):
         body = ctk.CTkFrame(self.root, fg_color=COLORS["sky"], corner_radius=0)
-        body.grid(row=1, column=0, sticky="nsew")
-        body.grid_columnconfigure(0, minsize=380)
+        body.grid(row=0, column=0, sticky="nsew")
+        body.grid_columnconfigure(0, minsize=360, weight=0)
         body.grid_columnconfigure(1, weight=1)
         body.grid_rowconfigure(0, weight=1)
 
-        form = ctk.CTkScrollableFrame(
+        sidebar = ctk.CTkFrame(
             body,
             fg_color=COLORS["panel"],
             border_color=COLORS["line"],
             border_width=1,
             corner_radius=14,
+            width=360,
         )
-        form.grid(row=0, column=0, padx=(28, 14), pady=28, sticky="nsew")
+        sidebar.grid(row=0, column=0, padx=(28, 14), pady=28, sticky="ns")
+        sidebar.grid_propagate(False)
+        sidebar.grid_columnconfigure(0, weight=1)
+        sidebar.grid_rowconfigure(0, weight=1)
+        self.sidebar = sidebar
+
+        form = ctk.CTkScrollableFrame(
+            sidebar,
+            fg_color=COLORS["panel"],
+            corner_radius=0,
+            border_width=0,
+        )
+        form.grid(row=0, column=0, sticky="nsew")
         form.grid_columnconfigure(0, weight=1)
 
+        brand = ctk.CTkFrame(form, fg_color="transparent")
+        brand.grid(row=0, column=0, padx=24, pady=(16, 8), sticky="ew")
+        brand.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(
-            form,
-            text="Find your Canary hire car",
+            brand,
+            text="CC",
+            width=40,
+            height=40,
+            corner_radius=10,
+            fg_color=COLORS["ocean"],
+            text_color="white",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).grid(row=0, column=0, rowspan=2, padx=(0, 12), sticky="nw")
+        ctk.CTkLabel(
+            brand,
+            text="Canary Car Finder",
             text_color=COLORS["ink"],
-            font=ctk.CTkFont(size=26, weight="bold"),
-        ).grid(row=0, column=0, padx=26, pady=(26, 6), sticky="w")
+            font=ctk.CTkFont(size=22, weight="bold"),
+        ).grid(row=0, column=1, sticky="w")
         ctk.CTkLabel(
-            form,
-            text="Pick your holiday window. Canary Car Finder checks the trusted local providers for you.",
-            text_color=COLORS["muted"],
-            font=ctk.CTkFont(size=15),
-            wraplength=320,
-        ).grid(row=1, column=0, padx=26, pady=(0, 20), sticky="w")
-
-        mode = ctk.CTkSegmentedButton(
-            form,
-            values=SEARCH_PRESETS,
-            variable=self.search_mode_var,
-            selected_color=COLORS["ocean"],
-            selected_hover_color=COLORS["deep_ocean"],
-            unselected_color="#edf6f7",
-            unselected_hover_color=COLORS["sand"],
-            text_color=COLORS["ink"],
-            command=lambda _: self._apply_preset(),
-        )
-        mode.grid(row=2, column=0, padx=26, pady=(0, 18), sticky="ew")
-        self.preset_help_var = ctk.StringVar()
-        ctk.CTkLabel(
-            form,
-            textvariable=self.preset_help_var,
+            brand,
+            text="Trusted Canary car hire",
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=13),
-            wraplength=320,
-        ).grid(row=3, column=0, padx=26, pady=(0, 12), sticky="w")
+        ).grid(row=1, column=1, sticky="w")
+
+        self.preset_help_var = ctk.StringVar()
+        self._section_label(form, "Search mode", 1)
+        self._preset_radios(form, 2)
+        self.preset_help_var.set("")
 
         self.date_help_var = ctk.StringVar()
         self.length_help_var = ctk.StringVar()
 
-        self._section_label(form, "Pickup location", 4)
+        self._section_label(form, "Pickup location", 3)
         ctk.CTkLabel(
             form,
             text="Fuerteventura Airport",
@@ -226,41 +188,42 @@ class CanaryCarFinderApp:
             corner_radius=10,
             height=42,
             font=ctk.CTkFont(size=15, weight="bold"),
-        ).grid(row=5, column=0, padx=26, pady=(0, 14), sticky="ew")
+        ).grid(row=4, column=0, padx=24, pady=(0, 10), sticky="ew")
 
-        self._section_label(form, "Holiday dates", 6)
-        self._date_picker(form, "Earliest departure", self.pickup_date_var, self.pickup_date_display_var, 4)
-        self._date_picker(form, "Latest return", self.return_date_var, self.return_date_display_var, 5)
-        ctk.CTkLabel(
-            form,
-            textvariable=self.date_help_var,
-            text_color=COLORS["muted"],
-            font=ctk.CTkFont(size=12),
-            wraplength=320,
-        ).grid(row=11, column=0, padx=26, pady=(0, 10), sticky="w")
-        self._section_label(form, "Trip Length", 12)
-        self._entry(form, "Minimum trip length", self.min_days_var, 7)
-        self._entry(form, "Maximum trip length", self.max_days_var, 8)
-        ctk.CTkLabel(
-            form,
-            textvariable=self.length_help_var,
-            text_color=COLORS["muted"],
-            font=ctk.CTkFont(size=12),
-            wraplength=320,
-        ).grid(row=17, column=0, padx=26, pady=(0, 10), sticky="w")
+        self._section_label(form, "Holiday dates", 5)
+        self._date_pair(form, 6)
+        self._section_label(form, "Trip length", 7)
+        self._entry_pair(form, 8)
+        action_frame = ctk.CTkFrame(sidebar, fg_color=COLORS["panel"], corner_radius=0)
+        action_frame.grid(row=1, column=0, padx=16, pady=(6, 8), sticky="ew")
+        action_frame.grid_columnconfigure(0, weight=1)
+
+        self.search_button = ctk.CTkButton(
+            action_frame,
+            text="Search",
+            height=52,
+            corner_radius=12,
+            fg_color=COLORS["sun"],
+            hover_color="#d99b2e",
+            text_color="#1f2d32",
+            font=ctk.CTkFont(size=21, weight="bold"),
+            command=self._start_search,
+        )
+        self.search_button.grid(row=0, column=0, padx=8, pady=(0, 8), sticky="ew")
+
         self.advanced_button = ctk.CTkButton(
-            form,
+            action_frame,
             text="Advanced Options",
-            height=42,
+            height=38,
             fg_color="#edf6f7",
             hover_color=COLORS["sand"],
             text_color=COLORS["deep_ocean"],
             command=self._toggle_advanced,
         )
-        self.advanced_button.grid(row=18, column=0, padx=26, pady=(4, 12), sticky="ew")
+        self.advanced_button.grid(row=1, column=0, padx=8, pady=(0, 0), sticky="ew")
 
         self.advanced_frame = ctk.CTkFrame(form, fg_color="#f8fbfb", border_color=COLORS["line"], border_width=1, corner_radius=12)
-        self.advanced_frame.grid(row=19, column=0, padx=26, pady=(0, 12), sticky="ew")
+        self.advanced_frame.grid(row=9, column=0, padx=24, pady=(0, 12), sticky="ew")
         self.advanced_frame.grid_columnconfigure(0, weight=1)
         self._section_label(self.advanced_frame, "Time choices", 0)
         self._time_checks(self.advanced_frame, "Pickup Times", self.pickup_time_vars, 1)
@@ -286,19 +249,9 @@ class CanaryCarFinderApp:
         browser_toggle.grid(row=18, column=0, padx=26, pady=(10, 18), sticky="w")
         self.advanced_frame.grid_remove()
 
-        self.search_button = ctk.CTkButton(
-            form,
-            text="Search",
-            height=56,
-            corner_radius=12,
-            fg_color=COLORS["sun"],
-            hover_color="#d99b2e",
-            text_color="#1f2d32",
-            font=ctk.CTkFont(size=20, weight="bold"),
-            command=self._start_search,
-        )
-        self.search_button.grid(row=20, column=0, padx=26, pady=(8, 26), sticky="ew")
         self._apply_preset()
+
+        self._build_support_panel(form)
 
         content = ctk.CTkFrame(body, fg_color="transparent")
         content.grid(row=0, column=1, padx=(14, 28), pady=28, sticky="nsew")
@@ -306,7 +259,6 @@ class CanaryCarFinderApp:
         content.grid_rowconfigure(1, weight=1)
 
         self._build_status_panel(content)
-        self._build_support_panel(content)
 
     def _build_status_panel(self, parent):
         status = ctk.CTkFrame(parent, fg_color=COLORS["panel"], border_color=COLORS["line"], border_width=1, corner_radius=14)
@@ -363,36 +315,37 @@ class CanaryCarFinderApp:
 
     def _build_support_panel(self, parent):
         support = ctk.CTkFrame(parent, fg_color=COLORS["sand"], corner_radius=14)
-        support.grid(row=2, column=0, sticky="ew")
+        support.grid(row=12, column=0, padx=24, pady=(8, 24), sticky="ew")
         support.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
             support,
             text="Saved money?",
             text_color=COLORS["ink"],
-            font=ctk.CTkFont(size=18, weight="bold"),
-        ).grid(row=0, column=0, padx=22, pady=(18, 4), sticky="w")
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).grid(row=0, column=0, padx=16, pady=(12, 6), sticky="w")
         ctk.CTkLabel(
             support,
             textvariable=self.support_var,
             text_color=COLORS["muted"],
-            font=ctk.CTkFont(size=13),
-            wraplength=520,
-        ).grid(row=1, column=0, padx=22, pady=(0, 16), sticky="w")
+            font=ctk.CTkFont(size=12),
+            wraplength=250,
+            justify="left",
+        ).grid(row=1, column=0, padx=16, pady=(0, 10), sticky="w")
         ctk.CTkButton(
             support,
             text="Buy me an Estrella",
-            width=180,
-            height=38,
+            width=0,
+            height=34,
             fg_color=COLORS["coral"],
             hover_color="#bf574b",
             command=self._open_donation,
-        ).grid(row=0, column=1, rowspan=2, padx=22, pady=18, sticky="e")
+        ).grid(row=2, column=0, padx=16, pady=(0, 12), sticky="ew")
 
     def _build_footer(self):
         footer = ctk.CTkFrame(self.root, fg_color=COLORS["sky"], corner_radius=0)
-        footer.grid(row=2, column=0, sticky="ew")
-        footer.grid_columnconfigure(0, weight=1)
+        footer.grid(row=1, column=0, sticky="ew")
+        footer.grid_columnconfigure(1, weight=1)
 
         version = self.app_config.get("version", "1.0.0")
         ctk.CTkLabel(
@@ -401,6 +354,28 @@ class CanaryCarFinderApp:
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=12),
         ).grid(row=0, column=0, padx=28, pady=(0, 16), sticky="w")
+        utility = ctk.CTkFrame(footer, fg_color="transparent")
+        utility.grid(row=0, column=2, padx=28, pady=(0, 16), sticky="e")
+        ctk.CTkButton(
+            utility,
+            text="Help",
+            width=76,
+            height=30,
+            fg_color="#edf6f7",
+            hover_color=COLORS["sand"],
+            text_color=COLORS["deep_ocean"],
+            command=self._show_help,
+        ).grid(row=0, column=0, padx=(0, 8))
+        ctk.CTkButton(
+            utility,
+            text="About",
+            width=76,
+            height=30,
+            fg_color="#edf6f7",
+            hover_color=COLORS["sand"],
+            text_color=COLORS["deep_ocean"],
+            command=self._show_about,
+        ).grid(row=0, column=1)
 
     def _entry(self, parent, label, variable, row):
         ctk.CTkLabel(parent, text=label, text_color=COLORS["ink"], font=ctk.CTkFont(size=13, weight="bold")).grid(
@@ -416,13 +391,33 @@ class CanaryCarFinderApp:
         )
         field.grid(row=row * 2, column=0, padx=26, pady=(0, 14), sticky="ew")
 
+    def _preset_radios(self, parent, row):
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.grid(row=row, column=0, padx=24, pady=(0, 8), sticky="ew")
+        frame.grid_columnconfigure(0, weight=1)
+        for index, value in enumerate(SEARCH_PRESETS):
+            radio = ctk.CTkRadioButton(
+                frame,
+                text=value,
+                value=value,
+                variable=self.search_mode_var,
+                command=self._apply_preset,
+                radiobutton_width=20,
+                radiobutton_height=20,
+                border_color=COLORS["ocean"],
+                fg_color=COLORS["ocean"],
+                font=ctk.CTkFont(size=15, weight="bold"),
+                text_color=COLORS["ink"],
+            )
+            radio.grid(row=index, column=0, padx=4, pady=3, sticky="w")
+
     def _section_label(self, parent, label, row):
         ctk.CTkLabel(
             parent,
             text=label,
             text_color=COLORS["ocean"],
             font=ctk.CTkFont(size=15, weight="bold"),
-        ).grid(row=row, column=0, padx=26, pady=(12, 8), sticky="w")
+        ).grid(row=row, column=0, padx=24, pady=(8, 5), sticky="w")
 
     def _date_picker(self, parent, label, iso_variable, display_variable, row):
         ctk.CTkLabel(parent, text=label, text_color=COLORS["ink"], font=ctk.CTkFont(size=13, weight="bold")).grid(
@@ -441,6 +436,58 @@ class CanaryCarFinderApp:
             command=lambda: self._open_calendar(iso_variable, display_variable),
         )
         button.grid(row=row * 2, column=0, padx=26, pady=(0, 14), sticky="ew")
+
+    def _date_pair(self, parent, row):
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.grid(row=row, column=0, padx=24, pady=(0, 8), sticky="ew")
+        frame.grid_columnconfigure((0, 1), weight=1, uniform="dates")
+        self._compact_date(frame, "Depart", self.pickup_date_var, self.pickup_date_display_var, 0)
+        self._compact_date(frame, "Return", self.return_date_var, self.return_date_display_var, 1)
+
+    def _compact_date(self, parent, label, iso_variable, display_variable, column):
+        ctk.CTkLabel(
+            parent,
+            text=label,
+            text_color=COLORS["ink"],
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).grid(row=0, column=column, padx=(0 if column == 0 else 6, 6 if column == 0 else 0), pady=(0, 5), sticky="w")
+        ctk.CTkButton(
+            parent,
+            textvariable=display_variable,
+            height=38,
+            corner_radius=10,
+            fg_color="#fbfdfd",
+            hover_color=COLORS["sand"],
+            border_color=COLORS["line"],
+            border_width=1,
+            text_color=COLORS["ink"],
+            font=ctk.CTkFont(size=13, weight="bold"),
+            command=lambda: self._open_calendar(iso_variable, display_variable),
+        ).grid(row=1, column=column, padx=(0 if column == 0 else 6, 6 if column == 0 else 0), sticky="ew")
+
+    def _entry_pair(self, parent, row):
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.grid(row=row, column=0, padx=24, pady=(0, 8), sticky="ew")
+        frame.grid_columnconfigure((0, 1), weight=1, uniform="length")
+        self._compact_entry(frame, "Minimum", self.min_days_var, 0)
+        self._compact_entry(frame, "Maximum", self.max_days_var, 1)
+
+    def _compact_entry(self, parent, label, variable, column):
+        ctk.CTkLabel(
+            parent,
+            text=label,
+            text_color=COLORS["ink"],
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).grid(row=0, column=column, padx=(0 if column == 0 else 6, 6 if column == 0 else 0), pady=(0, 5), sticky="w")
+        ctk.CTkEntry(
+            parent,
+            textvariable=variable,
+            height=38,
+            corner_radius=10,
+            border_color=COLORS["line"],
+            fg_color="#fbfdfd",
+            font=ctk.CTkFont(size=14),
+        ).grid(row=1, column=column, padx=(0 if column == 0 else 6, 6 if column == 0 else 0), sticky="ew")
 
     def _option(self, parent, label, variable, values, row):
         ctk.CTkLabel(parent, text=label, text_color=COLORS["ink"], font=ctk.CTkFont(size=13, weight="bold")).grid(
