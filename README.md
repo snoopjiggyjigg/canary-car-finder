@@ -1,4 +1,4 @@
-# Canary Car Finder v1.3
+# Canary Car Finder v1.0
 
 Local-only desktop tool. No hosting. No subscriptions. No cloud.
 
@@ -6,18 +6,19 @@ This version is focused on four trusted Canary Islands providers.
 
 ## What it does
 
-- Opens a desktop app
+- Runs a local search workflow
 - Lets you set:
   - date range
   - min/max hire days
   - pickup/return times
   - headless or visible browser
 - Searches trusted Fuerteventura Airport providers
-- Finds prices from `Total: xxx €`
+- Finds and compares provider prices
 - Shows live progress
 - Saves:
   - HTML report
   - CSV results
+  - Excel results
   - logs
   - debug screenshots if anything breaks
 
@@ -52,15 +53,6 @@ Open:
 
 Canary Car Finder v1 intentionally supports only these four trusted providers. No additional providers are planned for v1.
 
-## v1.2 update
+## Roadmap
 
-- Scrapes PlusCar vehicle cards directly: `article.swi_product`.
-- Reads `.swi_product_title`, `.swi_product_price`, and `.swi_product_total_price`.
-- Chooses the cheapest vehicle from the visible results grid without opening each car.
-
-## v1.3 update
-
-- Better winner card.
-- Shows PlusCar site daily rate separately from effective elapsed-day average.
-- Adds rental day estimate based on PlusCar's displayed pricing.
-- Cleaner report columns.
+See `ROADMAP.md`.
