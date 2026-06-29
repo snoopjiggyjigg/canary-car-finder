@@ -84,7 +84,7 @@ def _render_html(df, progress):
           background:linear-gradient(180deg, #eef6f3 0, #fbfcfb 360px);
           font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
         }}
-        .shell {{ width:min(1180px, calc(100% - 32px)); margin:0 auto; padding:30px 0 46px; }}
+        .shell {{ width:min(1180px, calc(100% - 36px)); margin:0 auto; padding:34px 0 54px; }}
         .topbar {{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:26px; }}
         .brand {{ display:flex; align-items:center; gap:12px; min-width:0; }}
         .mark {{ width:44px; height:44px; display:grid; place-items:center; border-radius:8px; background:var(--accent); color:white; font-weight:900; }}
@@ -96,7 +96,9 @@ def _render_html(df, progress):
         .progress-title {{ font-weight:900; font-size:18px; }}
         .progress-copy {{ color:var(--muted); margin-top:4px; }}
         .meter {{ height:12px; overflow:hidden; background:#e8efec; border-radius:999px; }}
-        .meter span {{ display:block; height:100%; width:var(--progress); background:linear-gradient(90deg, var(--accent), #21a391); border-radius:inherit; transition:width .25s ease; }}
+        .meter span {{ display:block; height:100%; width:var(--progress); background:linear-gradient(90deg, var(--accent), #21a391); border-radius:inherit; transition:width .25s ease; position:relative; overflow:hidden; }}
+        .meter span:after {{ content:""; position:absolute; inset:0; background:linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); animation:shine 1.2s linear infinite; }}
+        @keyframes shine {{ from {{ transform:translateX(-100%); }} to {{ transform:translateX(100%); }} }}
         .stats {{ display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin:18px 0 24px; }}
         .stat {{ background:rgba(255,255,255,.78); border:1px solid var(--line); border-radius:8px; padding:15px; }}
         .stat-label {{ color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; }}
@@ -112,7 +114,7 @@ def _render_html(df, progress):
         .side-panel p {{ margin:0; color:var(--muted); line-height:1.5; }}
         .section-title {{ display:flex; align-items:end; justify-content:space-between; gap:12px; margin:22px 0 12px; }}
         .section-title h2 {{ margin:0; font-size:24px; }}
-        .best-table {{ overflow:auto; border:1px solid var(--line); border-radius:8px; background:white; box-shadow:0 8px 24px rgba(29, 45, 43, .08); }}
+        .best-table {{ overflow:auto; border:1px solid var(--line); border-radius:8px; background:white; box-shadow:0 14px 36px rgba(29, 45, 43, .12); margin-bottom:28px; }}
         .best-table table {{ min-width:1060px; }}
         .book {{ display:inline-block; background:var(--accent); color:white; text-decoration:none; font-weight:900; padding:8px 11px; border-radius:8px; white-space:nowrap; }}
         .time-pair {{ display:inline-block; line-height:1.35; font-size:13px; color:var(--muted); }}
@@ -154,7 +156,7 @@ def _render_html(df, progress):
         .support a {{ display:inline-block; background:var(--coral); color:white; text-decoration:none; font-weight:900; padding:12px 16px; border-radius:8px; white-space:nowrap; }}
         .table-wrap {{ overflow:auto; border:1px solid var(--line); border-radius:8px; background:white; }}
         table {{ border-collapse:collapse; width:100%; min-width:980px; }}
-        th, td {{ border-bottom:1px solid var(--line); padding:10px; text-align:left; font-size:13px; vertical-align:top; }}
+        th, td {{ border-bottom:1px solid var(--line); padding:13px; text-align:left; font-size:14px; vertical-align:top; }}
         th {{ background:#eef4f1; font-size:12px; text-transform:uppercase; color:#4f5d59; }}
         tr:last-child td {{ border-bottom:0; }}
         @media (max-width:760px) {{
@@ -178,11 +180,11 @@ def _render_html(df, progress):
           </div>
           {_status_pill(progress)}
         </div>
+        {_hero_html(df)}
+        {_best_holidays_html(df)}
         {_progress_html(progress)}
         {_holiday_summary_html(df, progress)}
         {_stats_html(df)}
-        {_hero_html(df)}
-        {_best_holidays_html(df)}
         {_price_calendar_html(df)}
         {_search_statistics_html(df)}
         <div class='section-title'>
