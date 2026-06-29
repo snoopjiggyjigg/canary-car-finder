@@ -6,15 +6,17 @@ This version is focused on four trusted Canary Islands providers.
 
 ## What it does
 
-- Runs a local search workflow
+- Runs a modern Windows desktop app
 - Lets you set:
-  - date range
-  - min/max hire days
+  - pickup/return dates
   - pickup/return times
+  - transmission preference
   - headless or visible browser
 - Searches trusted Fuerteventura Airport providers
 - Finds and compares provider prices
 - Shows live progress
+- Remembers the previous search automatically
+- Opens the HTML report when the search completes
 - Saves:
   - HTML report
   - CSV results
@@ -27,15 +29,41 @@ This version is focused on four trusted Canary Islands providers.
 1. Clone or download this repository.
 2. Double-click `install_windows.bat` once.
 3. Double-click `start_app.bat`.
-4. Click **Run test search** first.
-5. If that works, click **Run small batch**.
-6. If that works, click **Run full search**.
+4. Choose pickup/return dates and times.
+5. Choose a transmission preference.
+6. Click **Search**.
+
+For the command-line workflow:
+
+```bash
+python cli.py --mode test
+```
 
 ## Results
 
 Open:
 
 `results/report.html`
+
+The desktop app opens this report automatically after a completed search.
+
+## Support link
+
+The "Buy me an Estrella" button uses the configurable `donation_url` in:
+
+`config/app_config.json`
+
+## Windows packaging
+
+To create a distributable Windows build:
+
+```text
+build_windows.bat
+```
+
+The packaged application is written to:
+
+`release/CanaryCarFinder`
 
 ## Current providers
 

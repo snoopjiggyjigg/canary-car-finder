@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from app_config import load_app_config
+
 RESULTS = Path("results")
 EXPORT_COLUMNS = [
     "provider",
@@ -48,6 +50,7 @@ def write_reports(rows, progress=None):
 
 def _render_html(df, progress):
     refresh = "<meta http-equiv='refresh' content='5'>" if _is_running(progress) else ""
+    app_config = load_app_config()
     return f"""
     <!doctype html>
     <html lang='en'>
@@ -65,6 +68,7 @@ def _render_html(df, progress):
           --panel:#ffffff;
           --accent:#0b7a75;
           --accent-2:#e5b94e;
+          --coral:#d96d5f;
           --danger:#b64b4b;
           --shadow:0 16px 44px rgba(29, 45, 43, .12);
         }}
@@ -121,6 +125,10 @@ def _render_html(df, progress):
         .comparison {{ border-top:1px solid var(--line); padding-top:12px; font-weight:900; color:var(--accent); }}
         .comparison.more {{ color:#835b00; }}
         .comparison.failed {{ color:var(--danger); }}
+        .support {{ margin-top:24px; background:#fff7e8; border:1px solid #ead8b3; border-radius:8px; padding:22px; display:flex; align-items:center; justify-content:space-between; gap:18px; }}
+        .support h2 {{ margin:0 0 6px; font-size:22px; }}
+        .support p {{ margin:0; color:var(--muted); line-height:1.5; }}
+        .support a {{ display:inline-block; background:var(--coral); color:white; text-decoration:none; font-weight:900; padding:12px 16px; border-radius:8px; white-space:nowrap; }}
         .table-wrap {{ overflow:auto; border:1px solid var(--line); border-radius:8px; background:white; }}
         table {{ border-collapse:collapse; width:100%; min-width:980px; }}
         th, td {{ border-bottom:1px solid var(--line); padding:10px; text-align:left; font-size:13px; vertical-align:top; }}
@@ -130,6 +138,7 @@ def _render_html(df, progress):
           .topbar, .progress-head, .section-title, .price-line {{ align-items:flex-start; flex-direction:column; }}
           .stats {{ grid-template-columns:repeat(2, minmax(0, 1fr)); }}
           .hero-card {{ grid-template-columns:1fr; }}
+          .support {{ align-items:flex-start; flex-direction:column; }}
           .winner-price {{ font-size:42px; }}
         }}
       </style>
@@ -163,6 +172,7 @@ def _render_html(df, progress):
         <div class='table-wrap'>
           {_table_html(df)}
         </div>
+        {_support_html(df, app_config)}
       </main>
     </body>
     </html>
@@ -331,6 +341,31 @@ def _table_html(df):
     return table_df.to_html(index=False, escape=False)
 
 
+def _support_html(df, app_config):
+    donation_url = app_config.get("donation_url")
+    button = ""
+    if donation_url:
+        button = f"<a href='{escape(str(donation_url), quote=True)}'>🍺 Buy me an Estrella</a>"
+
+    message = (
+        "If Canary Car Finder helped you find a cheaper hire car, consider buying me an Estrella. "
+        "Every donation helps keep the application free and supports future improvements."
+    )
+    saving = _saving_vs_most_expensive(df)
+    if saving and saving > 0.009:
+        message = f"You saved {_format_euro(saving)} today. Fancy buying me one Estrella? 🍺"
+
+    return f"""
+      <section class='support'>
+        <div>
+          <h2>🍺 Saved money?</h2>
+          <p>{message}</p>
+        </div>
+        {button}
+      </section>
+    """
+
+
 def _successful(df):
     if df.empty or "success" not in df.columns:
         return pd.DataFrame()
@@ -338,6 +373,13 @@ def _successful(df):
     if successful.empty:
         return successful
     return successful.sort_values(["price"], ascending=True, na_position="last")
+
+
+def _saving_vs_most_expensive(df):
+    successful = _successful(df)
+    if successful.empty or "price" not in successful.columns or len(successful) < 2:
+        return None
+    return float(successful["price"].max()) - float(successful["price"].min())
 
 
 def _format_euro(value):

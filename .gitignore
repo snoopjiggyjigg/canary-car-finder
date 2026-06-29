@@ -10,6 +10,12 @@ venv/
 # Generated search results
 results/
 logs/
+config/user_settings.json
+
+# Packaging
+build/
+dist/
+release/
 
 # Office files
 *.xlsx

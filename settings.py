@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from dataclasses import dataclass
 from datetime import date
+import sys
 
 SETTINGS_PATH = Path("config/default_settings.json")
 
@@ -22,7 +23,7 @@ class AppSettings:
         return not self.visible_browser
 
 def load_settings() -> AppSettings:
-    data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+    data = json.loads(_resource_path(SETTINGS_PATH).read_text(encoding="utf-8"))
     return AppSettings(
         start_date=date.fromisoformat(data["start_date"]),
         end_date=date.fromisoformat(data["end_date"]),
@@ -49,3 +50,9 @@ def save_settings(settings: AppSettings):
     }
     SETTINGS_PATH.parent.mkdir(exist_ok=True)
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _resource_path(path):
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / path
+    return path
