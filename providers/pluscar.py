@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from urllib.parse import urljoin
 
 from playwright.sync_api import sync_playwright
 
@@ -22,6 +23,7 @@ def money(raw: str) -> float:
 
 class PlusCarProvider(CarProvider):
     name = "PlusCar"
+    logo_url = "https://www.pluscarcanarias.com/favicon.ico"
 
     def __init__(self, settings):
         self.settings = settings
@@ -92,7 +94,14 @@ class PlusCarProvider(CarProvider):
                     total = money(total_match.group(1))
 
                 if total is not None:
-                    vehicles.append({"vehicle": title, "daily_price": daily, "price": total})
+                    vehicles.append(
+                        {
+                            "vehicle": title,
+                            "image_url": self._vehicle_image(card),
+                            "daily_price": daily,
+                            "price": total,
+                        }
+                    )
             except Exception:
                 continue
         return sorted(vehicles, key=lambda v: v["price"])
@@ -129,6 +138,7 @@ class PlusCarProvider(CarProvider):
                 days_elapsed,
                 success=price is not None,
                 vehicle=best["vehicle"] if best else None,
+                vehicle_image=best["image_url"] if best else None,
                 daily=daily,
                 price=price,
                 vehicles_found=len(vehicles),
@@ -149,6 +159,7 @@ class PlusCarProvider(CarProvider):
                 days_elapsed,
                 success=False,
                 vehicle=None,
+                vehicle_image=None,
                 daily=None,
                 price=None,
                 vehicles_found=0,
@@ -165,6 +176,7 @@ class PlusCarProvider(CarProvider):
         days_elapsed,
         success,
         vehicle,
+        vehicle_image,
         daily,
         price,
         vehicles_found,
@@ -180,6 +192,8 @@ class PlusCarProvider(CarProvider):
             "days_elapsed": days_elapsed,
             "success": success,
             "vehicle": vehicle,
+            "_vehicle_image": vehicle_image,
+            "_provider_logo": self.logo_url,
             "site_daily_rate": daily,
             "price": price,
             "effective_daily": round(price / days_elapsed, 2) if price else None,
@@ -188,3 +202,10 @@ class PlusCarProvider(CarProvider):
             "url": url,
             "status": status,
         }
+
+    def _vehicle_image(self, card):
+        try:
+            src = card.locator("img").first.get_attribute("src", timeout=1000)
+            return urljoin(self.page.url, src) if src else None
+        except Exception:
+            return None

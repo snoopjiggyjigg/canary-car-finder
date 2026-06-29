@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 
 class CarProvider(ABC):
     name = "Unknown"
+    logo_url = None
 
     @abstractmethod
     def start(self):
