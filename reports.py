@@ -116,6 +116,9 @@ def _render_html(df, progress):
         .best-table table {{ min-width:1060px; }}
         .book {{ display:inline-block; background:var(--accent); color:white; text-decoration:none; font-weight:900; padding:8px 11px; border-radius:8px; white-space:nowrap; }}
         .time-pair {{ display:inline-block; line-height:1.35; font-size:13px; color:var(--muted); }}
+        .source {{ display:inline-block; border-radius:999px; padding:5px 9px; font-size:11px; font-weight:900; letter-spacing:.02em; }}
+        .source.live {{ background:#e1f4ea; color:#0d6b3a; }}
+        .source.cache {{ background:#e9eef8; color:#34508a; }}
         .calendar {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px; margin-bottom:24px; }}
         .calendar a {{ border:1px solid var(--line); border-radius:8px; padding:12px; color:var(--ink); text-decoration:none; background:white; }}
         .calendar .green {{ background:#e1f4ea; border-color:#9bd3b1; }}
@@ -222,12 +225,24 @@ def _progress_html(progress):
     total = int(progress.get("total", 0))
     percent = round((completed / total) * 100) if total else 0
     message = escape(str(progress.get("message", "Preparing search")))
+    summary = progress.get("summary") or {}
     return f"""
       <section class='progress-panel'>
         <div class='progress-head'>
           <div>
             <div class='progress-title'>{percent}% complete</div>
             <div class='progress-copy'>{message}</div>
+            <div class='progress-copy'>
+              Current provider: {escape(str(summary.get("current_provider", "N/A")))} /
+              Holiday: {escape(str(summary.get("current_holiday", "N/A")))} /
+              Time: {escape(str(summary.get("current_time_combination", "N/A")))}
+            </div>
+            <div class='progress-copy'>
+              Cache hits: {summary.get("cache_hits", 0)} /
+              Live searches: {summary.get("live_searches", 0)} /
+              Remaining: {max(int(summary.get("total_provider_searches", total) or 0) - int(summary.get("provider_searches_completed", completed) or 0), 0)} /
+              Hit rate: {summary.get("cache_hit_rate", 0)}%
+            </div>
           </div>
           <strong>{completed} / {total}</strong>
         </div>
@@ -286,6 +301,11 @@ def _holiday_summary_html(df, progress):
         {_stat("Total Combinations", str(summary.get("total_combinations_generated", 0)))}
         {_stat("Duplicates Removed", str(summary.get("duplicate_searches_removed", 0)))}
         {_stat("Provider Searches", str(summary.get("provider_searches_completed", 0)))}
+        {_stat("Cache Mode", escape(str(summary.get("cache_mode", "Live Search"))))}
+        {_stat("Cache Hits", str(summary.get("cache_hits", 0)))}
+        {_stat("Live Searches", str(summary.get("live_searches", 0)))}
+        {_stat("Browser Sessions", str(summary.get("browser_sessions_opened", 0)))}
+        {_stat("Estimated Time Saved", _duration(summary.get("estimated_time_saved_seconds")))}
         {_stat("Successful Searches", str(len(successful)))}
         {_stat("Failed Searches", str(failed))}
         {_stat("Search Duration", _duration(summary.get("search_duration_seconds")))}
@@ -315,6 +335,7 @@ def _best_holidays_html(df):
             <tr id='result-{escape(_anchor(row))}'>
               <td>{index}</td>
               <td>{escape(_text(row.get("provider"), ""))}</td>
+              <td>{_source_badge(row)}</td>
               <td>{escape(_text(row.get("vehicle"), "Vehicle unavailable"))}</td>
               <td>{_date_text(row.get("pickup"))}</td>
               <td>{_date_text(row.get("dropoff"))}</td>
@@ -332,7 +353,7 @@ def _best_holidays_html(df):
       <div class='section-title'><h2>Top 20 Best Holidays</h2><span class='subtitle'>Ranked by total price, daily price, then provider preference</span></div>
       <div class='best-table'>
         <table>
-          <thead><tr><th>Rank</th><th>Provider</th><th>Vehicle</th><th>Departure</th><th>Return</th><th>Trip</th><th>Pickup</th><th>Return time</th><th>Total</th><th>Daily</th><th>Saves vs next</th><th>Book</th></tr></thead>
+          <thead><tr><th>Rank</th><th>Provider</th><th>Source</th><th>Vehicle</th><th>Departure</th><th>Return</th><th>Trip</th><th>Pickup</th><th>Return time</th><th>Total</th><th>Daily</th><th>Saves vs next</th><th>Book</th></tr></thead>
           <tbody>{"".join(rows)}</tbody>
         </table>
       </div>
@@ -452,7 +473,7 @@ def _card_html(row, cheapest, next_cheapest):
         <div class='card-body'>
           <div>
             <h3>{escape(vehicle)}</h3>
-            <div class='route'>{escape(provider)} &middot; {_date_text(row.get("pickup"))} {_time_html(row, "pickup")} to {_date_text(row.get("dropoff"))} {_time_html(row, "return")}</div>
+            <div class='route'>{_source_badge(row)} {escape(provider)} &middot; {_date_text(row.get("pickup"))} {_time_html(row, "pickup")} to {_date_text(row.get("dropoff"))} {_time_html(row, "return")}</div>
             <div class='route'>{_vehicle_meta(row)}</div>
           </div>
           <div class='price-line'>
@@ -476,6 +497,12 @@ def _logo_html(src, provider):
     if pd.isna(src) or not src:
         return f"<div class='logo'><span>{escape(_initials(provider))}</span></div>"
     return f"<div class='logo'><img src='{escape(str(src), quote=True)}' alt='{escape(provider, quote=True)} logo'></div>"
+
+
+def _source_badge(row):
+    source = _text(row.get("_result_source"), "LIVE").upper()
+    badge_class = "cache" if source == "CACHE" else "live"
+    return f"<span class='source {badge_class}'>{escape(source)}</span>"
 
 
 def _comparison(price, cheapest, next_cheapest, success):

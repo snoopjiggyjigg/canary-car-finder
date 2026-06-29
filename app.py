@@ -7,13 +7,15 @@ from pathlib import Path
 import queue
 import sys
 import threading
+from tkinter import messagebox
 import webbrowser
 
 if getattr(sys, "frozen", False):
     os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(Path(sys._MEIPASS) / "ms-playwright"))
 
 from app_config import load_app_config
-from runner import run_search
+from runner import estimate_search, run_search
+from search_cache import CACHE_MODES
 from settings import load_settings
 from utils import setup_logging
 
@@ -25,6 +27,7 @@ PICKUP_TIME_OPTIONS = ["09:00", "10:30", "11:00", "12:00", "13:00"]
 RETURN_TIME_OPTIONS = ["16:30", "17:30", "18:00", "19:00"]
 TRANSMISSIONS = ["Any", "Manual", "Automatic"]
 SEARCH_MODES = ["Single Search", "Holiday Optimiser"]
+CACHE_MODE_OPTIONS = list(CACHE_MODES.keys())
 SEAT_OPTIONS = ["Any", "2+", "4+", "5+", "7+", "9+"]
 VEHICLE_TYPES = ["Any", "Mini", "Economy", "Compact", "Family", "SUV", "Van"]
 PROVIDERS = ["PlusCar", "AutoReisen", "Cicar", "Payless Car"]
@@ -80,6 +83,7 @@ class CanaryCarFinderApp:
         self.vehicle_seats_var = ctk.StringVar(value=self.user_settings.get("vehicle_seats", SEAT_OPTIONS[0]))
         self.vehicle_type_var = ctk.StringVar(value=self.user_settings.get("vehicle_type", VEHICLE_TYPES[0]))
         self.search_mode_var = ctk.StringVar(value=self.user_settings.get("search_mode", SEARCH_MODES[0]))
+        self.cache_mode_var = ctk.StringVar(value=self.user_settings.get("cache_mode", CACHE_MODE_OPTIONS[1]))
         self.visible_browser_var = ctk.BooleanVar(
             value=bool(self.user_settings.get("visible_browser", self.settings.visible_browser))
         )
@@ -141,7 +145,19 @@ class CanaryCarFinderApp:
             text_color=COLORS["deep_ocean"],
             command=self._show_about,
         )
-        about_button.grid(row=0, column=1, padx=34, pady=26, sticky="e")
+        about_button.grid(row=0, column=1, padx=(0, 12), pady=26, sticky="e")
+
+        help_button = ctk.CTkButton(
+            header,
+            text="Help",
+            width=96,
+            height=36,
+            fg_color="#ffffff",
+            hover_color=COLORS["sand"],
+            text_color=COLORS["deep_ocean"],
+            command=self._show_help,
+        )
+        help_button.grid(row=0, column=2, padx=(0, 34), pady=26, sticky="e")
 
     def _build_body(self):
         body = ctk.CTkFrame(self.root, fg_color=COLORS["sky"], corner_radius=0)
@@ -217,6 +233,7 @@ class CanaryCarFinderApp:
         self._option(form, "Vehicle seats", self.vehicle_seats_var, SEAT_OPTIONS, 14)
         self._option(form, "Vehicle type", self.vehicle_type_var, VEHICLE_TYPES, 15)
         self._section_label(form, "Search Options", 31)
+        self._option(form, "Cache mode", self.cache_mode_var, CACHE_MODE_OPTIONS, 16)
 
         browser_toggle = ctk.CTkSwitch(
             form,
@@ -484,6 +501,11 @@ class CanaryCarFinderApp:
             self._append_log(f"Input error: {exc}")
             return
 
+        estimate = estimate_search(search_settings, mode)
+        if not self._confirm_search(estimate):
+            self._set_status("Search cancelled", "No provider websites were searched.", 0, 0)
+            return
+
         self._save_user_settings()
         self.search_running = True
         self.search_button.configure(state="disabled", text="Searching...")
@@ -538,6 +560,7 @@ class CanaryCarFinderApp:
         search_settings.transmission = self.transmission_var.get()
         search_settings.vehicle_seats = self.vehicle_seats_var.get()
         search_settings.vehicle_type = self.vehicle_type_var.get()
+        search_settings.cache_mode = self.cache_mode_var.get()
         search_settings.pickup_times = self._selected_times(self.pickup_time_vars, "pickup")
         search_settings.return_times = self._selected_times(self.return_time_vars, "return")
         search_settings.pickup_time = search_settings.pickup_times[0]
@@ -552,8 +575,8 @@ class CanaryCarFinderApp:
         except Exception as exc:
             self.events.put(("error", exc))
 
-    def _progress(self, completed, total, message):
-        self.events.put(("progress", completed, total, message))
+    def _progress(self, completed, total, message, summary=None):
+        self.events.put(("progress", completed, total, message, summary or {}))
 
     def _process_events(self):
         try:
@@ -561,8 +584,8 @@ class CanaryCarFinderApp:
                 event = self.events.get_nowait()
                 kind = event[0]
                 if kind == "progress":
-                    _, completed, total, message = event
-                    self._set_status("Searching providers", message, completed, total)
+                    _, completed, total, message, summary = event
+                    self._set_status("Searching providers", self._progress_detail(message, summary), completed, total)
                     self._append_log(f"[{completed}/{total}] {message}")
                 elif kind == "done":
                     _, rows, reports = event
@@ -714,6 +737,7 @@ class CanaryCarFinderApp:
             "min_days": self.min_days_var.get().strip(),
             "max_days": self.max_days_var.get().strip(),
             "search_mode": self.search_mode_var.get(),
+            "cache_mode": self.cache_mode_var.get(),
             "transmission": self.transmission_var.get(),
             "vehicle_seats": self.vehicle_seats_var.get(),
             "vehicle_type": self.vehicle_type_var.get(),
@@ -740,8 +764,85 @@ class CanaryCarFinderApp:
             raise ValueError(f"Select at least one {label} time.")
         return selected
 
+    def _confirm_search(self, estimate):
+        message = (
+            "This search will perform:\n\n"
+            f"{estimate.get('date_combinations_generated', 0)} holiday combinations\n"
+            f"{estimate.get('time_combinations_generated', 0)} time combinations\n"
+            f"{estimate.get('provider_searches_estimated', 0)} provider searches\n\n"
+            f"Cache mode: {estimate.get('cache_mode', 'Live Search')}\n"
+            f"Estimated runtime: {estimate.get('estimated_duration_text', 'Unknown')}\n\n"
+            "Continue?"
+        )
+        return messagebox.askokcancel("Confirm Search", message, parent=self.root)
+
+    def _progress_detail(self, message, summary):
+        if not summary:
+            return message
+        remaining = max(summary.get("total_provider_searches", 0) - summary.get("provider_searches_completed", 0), 0)
+        return (
+            f"{message}\n"
+            f"Cache hits: {summary.get('cache_hits', 0)} / Live: {summary.get('live_searches', 0)} / "
+            f"Remaining: {remaining}\n"
+            f"Elapsed: {_duration_text(summary.get('elapsed_seconds'))} / "
+            f"Est. remaining: {_duration_text(summary.get('estimated_remaining_seconds'))} / "
+            f"Cache hit rate: {summary.get('cache_hit_rate', 0)}%"
+        )
+
+    def _show_help(self):
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("How Searches Work")
+        dialog.geometry("620x560")
+        dialog.configure(fg_color=COLORS["sky"])
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        panel = ctk.CTkScrollableFrame(dialog, fg_color=COLORS["panel"], corner_radius=14)
+        panel.pack(fill="both", expand=True, padx=24, pady=24)
+        panel.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            panel,
+            text="Why Searches Take Time",
+            text_color=COLORS["ink"],
+            font=ctk.CTkFont(size=26, weight="bold"),
+        ).grid(row=0, column=0, padx=22, pady=(22, 12), sticky="w")
+        help_text = (
+            "Canary Car Finder searches PlusCar, AutoReisen, Cicar and Payless Car directly. "
+            "That keeps prices accurate because the results come from the trusted provider websites, not from a reseller.\n\n"
+            "Flexible dates create more work because every possible holiday inside your window is checked. "
+            "Flexible times multiply that again because each pickup and return time pair has to be tested.\n\n"
+            "The app is intentionally slower than a comparison website because it is doing the same checks you would do by hand. "
+            "The local cache speeds up repeated searches by reusing recent results when your cache mode allows it.\n\n"
+            "Live Search always checks provider websites. Smart Search reuses results less than 24 hours old. "
+            "Fast Search reuses results less than 7 days old."
+        )
+        ctk.CTkLabel(
+            panel,
+            text=help_text,
+            text_color=COLORS["ink"],
+            justify="left",
+            wraplength=540,
+            font=ctk.CTkFont(size=15),
+        ).grid(row=1, column=0, padx=22, pady=(0, 20), sticky="w")
+        ctk.CTkButton(panel, text="Close", command=dialog.destroy).grid(
+            row=2, column=0, padx=22, pady=(0, 22), sticky="ew"
+        )
+
 def _display_date(value):
     return date.fromisoformat(str(value)).strftime("%d/%m/%Y")
+
+
+def _duration_text(seconds):
+    if seconds is None:
+        return "calculating"
+    seconds = int(float(seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m"
+    return f"{minutes // 60}h {minutes % 60}m"
 
 
 def main():
