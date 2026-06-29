@@ -50,8 +50,10 @@ class PaylessProvider(CarProvider):
 
     def search(self, pickup, dropoff, pickup_time, return_time, index):
         days_elapsed = (dropoff - pickup).days
+        actual_pickup_time = _supported_time_text(pickup_time)
+        actual_return_time = _supported_time_text(return_time)
         try:
-            self._search_site(pickup, dropoff, pickup_time, return_time)
+            self._search_site(pickup, dropoff, actual_pickup_time, actual_return_time)
             self.page.screenshot(path=str(DEBUG / f"payless_{index:03d}_results.png"), full_page=True)
             html = self.page.content()
             (DEBUG / f"payless_{index:03d}_results.html").write_text(html, encoding="utf-8")
@@ -64,8 +66,8 @@ class PaylessProvider(CarProvider):
             return self.result(
                 pickup,
                 dropoff,
-                pickup_time,
-                return_time,
+                actual_pickup_time,
+                actual_return_time,
                 days_elapsed,
                 success=price is not None,
                 vehicle=best["vehicle"] if best else None,
@@ -75,6 +77,8 @@ class PaylessProvider(CarProvider):
                 vehicles_found=len(vehicles),
                 url=self.page.url if best else BOOKING_URL,
                 status=f"OK EUR {price:.2f}" if price else "No vehicle price found",
+                requested_pickup_time=pickup_time,
+                requested_return_time=return_time,
             )
         except Exception as exc:
             try:
@@ -85,8 +89,8 @@ class PaylessProvider(CarProvider):
             return self.result(
                 pickup,
                 dropoff,
-                pickup_time,
-                return_time,
+                actual_pickup_time,
+                actual_return_time,
                 days_elapsed,
                 success=False,
                 vehicle=None,
@@ -96,6 +100,8 @@ class PaylessProvider(CarProvider):
                 vehicles_found=0,
                 url=self.page.url if self.page else BOOKING_URL,
                 status=f"ERROR: {type(exc).__name__}: {str(exc)[:160]}",
+                requested_pickup_time=pickup_time,
+                requested_return_time=return_time,
             )
 
     def _search_site(self, pickup, dropoff, pickup_time, return_time):
@@ -214,3 +220,8 @@ def _supported_time(value):
     else:
         supported_minute = "45"
     return hour, supported_minute
+
+
+def _supported_time_text(value):
+    hour, minute = _supported_time(value)
+    return f"{int(hour):02d}:{minute}"

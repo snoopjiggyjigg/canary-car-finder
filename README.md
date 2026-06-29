@@ -8,12 +8,17 @@ This version is focused on four trusted Canary Islands providers.
 
 - Runs a modern Windows desktop app
 - Lets you set:
-  - pickup/return dates
+  - single pickup/return dates
+  - holiday optimiser departure/return window
+  - minimum/maximum trip length
   - pickup/return times
   - transmission preference
   - headless or visible browser
 - Searches trusted Fuerteventura Airport providers
 - Finds and compares provider prices
+- Ranks the top 20 cheapest holiday combinations
+- Shows a summary dashboard, price calendar, and search statistics
+- Supports optional vehicle seat, transmission, and vehicle type filters
 - Shows live progress
 - Remembers the previous search automatically
 - Opens the HTML report when the search completes
@@ -30,8 +35,10 @@ This version is focused on four trusted Canary Islands providers.
 2. Double-click `install_windows.bat` once.
 3. Double-click `start_app.bat`.
 4. Choose pickup/return dates and times.
-5. Choose a transmission preference.
+5. Choose **Single Search** or **Holiday Optimiser**.
 6. Click **Search**.
+
+Holiday Optimiser is the primary workflow. It searches every valid date combination between the earliest departure date and latest return date, within the selected minimum and maximum trip length. Results are ranked by total price and effective daily price.
 
 For the command-line workflow:
 

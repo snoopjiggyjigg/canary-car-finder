@@ -39,8 +39,10 @@ class CicarProvider(CarProvider):
 
     def search(self, pickup, dropoff, pickup_time, return_time, index):
         days_elapsed = (dropoff - pickup).days
+        actual_pickup_time = _supported_time(pickup_time)
+        actual_return_time = _supported_time(return_time)
         try:
-            html = self._quote_html(pickup, dropoff, pickup_time, return_time)
+            html = self._quote_html(pickup, dropoff, actual_pickup_time, actual_return_time)
             (DEBUG / f"cicar_{index:03d}_results.html").write_text(html, encoding="utf-8")
             parser = CicarFleetParser()
             vehicles = parser.parse(html)
@@ -51,8 +53,8 @@ class CicarProvider(CarProvider):
             return self.result(
                 pickup,
                 dropoff,
-                pickup_time,
-                return_time,
+                actual_pickup_time,
+                actual_return_time,
                 days_elapsed,
                 success=price is not None,
                 vehicle=best["vehicle"] if best else None,
@@ -62,13 +64,15 @@ class CicarProvider(CarProvider):
                 vehicles_found=len(vehicles),
                 url=best["booking_url"] if best else BOOKING_URL,
                 status=f"OK EUR {price:.2f}" if price else "No vehicle price found",
+                requested_pickup_time=pickup_time,
+                requested_return_time=return_time,
             )
         except Exception as exc:
             return self.result(
                 pickup,
                 dropoff,
-                pickup_time,
-                return_time,
+                actual_pickup_time,
+                actual_return_time,
                 days_elapsed,
                 success=False,
                 vehicle=None,
@@ -78,6 +82,8 @@ class CicarProvider(CarProvider):
                 vehicles_found=0,
                 url=BOOKING_URL,
                 status=f"ERROR: {type(exc).__name__}: {str(exc)[:160]}",
+                requested_pickup_time=pickup_time,
+                requested_return_time=return_time,
             )
 
     def _quote_html(self, pickup, dropoff, pickup_time, return_time):
@@ -213,3 +219,8 @@ def _classes(attrs):
 
 def _supported_minute(value):
     return "30" if int(value) >= 30 else "00"
+
+
+def _supported_time(value):
+    hour, minute = value.split(":", 1)
+    return f"{int(hour):02d}:{_supported_minute(minute)}"

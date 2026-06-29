@@ -42,7 +42,8 @@ def run_search(settings, mode, progress_callback=None, stop_callback=None):
                 )
 
                 result = provider.search(pickup, dropoff, ptime, rtime, index)
-                rows.append(result)
+                if _matches_filters(result, settings):
+                    rows.append(result)
                 completed += 1
 
                 if progress_callback:
@@ -75,3 +76,25 @@ def _progress(status, label, completed, total, message):
         "total": total,
         "message": message,
     }
+
+
+def _matches_filters(row, settings):
+    seats_filter = getattr(settings, "vehicle_seats", "Any")
+    if seats_filter and seats_filter != "Any":
+        seats = row.get("_seats")
+        if seats is not None and int(seats) < int(seats_filter.rstrip("+")):
+            return False
+
+    transmission_filter = getattr(settings, "transmission", "Any")
+    if transmission_filter and transmission_filter != "Any":
+        transmission = row.get("_transmission")
+        if transmission and transmission != transmission_filter:
+            return False
+
+    type_filter = getattr(settings, "vehicle_type", "Any")
+    if type_filter and type_filter != "Any":
+        vehicle_type = row.get("_vehicle_type")
+        if vehicle_type and vehicle_type != type_filter:
+            return False
+
+    return True

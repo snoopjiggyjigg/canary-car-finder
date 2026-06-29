@@ -34,8 +34,10 @@ class AutoReisenProvider(CarProvider):
 
     def search(self, pickup, dropoff, pickup_time, return_time, index):
         days_elapsed = (dropoff - pickup).days
+        actual_pickup_time = _nearest_supported_time(pickup_time)
+        actual_return_time = _nearest_supported_time(return_time)
         try:
-            html = self._quote_html(pickup, dropoff, pickup_time, return_time)
+            html = self._quote_html(pickup, dropoff, actual_pickup_time, actual_return_time)
             (DEBUG / f"autoreisen_{index:03d}_results.html").write_text(html, encoding="utf-8")
             vehicles = AutoReisenFleetParser().parse(html)
             best = vehicles[0] if vehicles else None
@@ -44,8 +46,8 @@ class AutoReisenProvider(CarProvider):
             return self.result(
                 pickup,
                 dropoff,
-                pickup_time,
-                return_time,
+                actual_pickup_time,
+                actual_return_time,
                 days_elapsed,
                 success=price is not None,
                 vehicle=best["vehicle"] if best else None,
@@ -55,13 +57,15 @@ class AutoReisenProvider(CarProvider):
                 vehicles_found=len(vehicles),
                 url=best["booking_url"] if best else RATES_URL,
                 status=f"OK {EURO}{price:.2f}" if price else "No vehicle price found",
+                requested_pickup_time=pickup_time,
+                requested_return_time=return_time,
             )
         except Exception as exc:
             return self.result(
                 pickup,
                 dropoff,
-                pickup_time,
-                return_time,
+                actual_pickup_time,
+                actual_return_time,
                 days_elapsed,
                 success=False,
                 vehicle=None,
@@ -71,6 +75,8 @@ class AutoReisenProvider(CarProvider):
                 vehicles_found=0,
                 url=RATES_URL,
                 status=f"ERROR: {type(exc).__name__}: {str(exc)[:160]}",
+                requested_pickup_time=pickup_time,
+                requested_return_time=return_time,
             )
 
     def _quote_html(self, pickup, dropoff, pickup_time, return_time):
@@ -80,10 +86,10 @@ class AutoReisenProvider(CarProvider):
                 "ofi_dev": SAME_OFFICE,
                 "dia_inicio": pickup.strftime("%d"),
                 "mes_inicio": pickup.strftime("%m-%Y"),
-                "hora_inicio": _nearest_supported_time(pickup_time),
+                "hora_inicio": pickup_time,
                 "dia_final": dropoff.strftime("%d"),
                 "mes_final": dropoff.strftime("%m-%Y"),
-                "hora_final": _nearest_supported_time(return_time),
+                "hora_final": return_time,
                 "carnet": "",
                 "redata": "0",
             }

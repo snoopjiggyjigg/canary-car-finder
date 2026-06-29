@@ -22,6 +22,9 @@ ctk = None
 USER_SETTINGS_PATH = Path("config/user_settings.json")
 TIME_OPTIONS = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in (0, 30)]
 TRANSMISSIONS = ["Any", "Manual", "Automatic"]
+SEARCH_MODES = ["Single Search", "Holiday Optimiser"]
+SEAT_OPTIONS = ["Any", "2+", "4+", "5+", "7+", "9+"]
+VEHICLE_TYPES = ["Any", "Mini", "Economy", "Compact", "Family", "SUV", "Van"]
 PROVIDERS = ["PlusCar", "AutoReisen", "Cicar", "Payless Car"]
 
 COLORS = {
@@ -65,12 +68,19 @@ class CanaryCarFinderApp:
         )
         self.pickup_time_var = ctk.StringVar(value=self.user_settings.get("pickup_time", self.settings.pickup_time))
         self.return_time_var = ctk.StringVar(value=self.user_settings.get("return_time", self.settings.final_return_time))
+        self.min_days_var = ctk.StringVar(value=str(self.user_settings.get("min_days", self.settings.min_days)))
+        self.max_days_var = ctk.StringVar(value=str(self.user_settings.get("max_days", self.settings.max_days)))
         self.transmission_var = ctk.StringVar(value=self.user_settings.get("transmission", TRANSMISSIONS[0]))
+        self.vehicle_seats_var = ctk.StringVar(value=self.user_settings.get("vehicle_seats", SEAT_OPTIONS[0]))
+        self.vehicle_type_var = ctk.StringVar(value=self.user_settings.get("vehicle_type", VEHICLE_TYPES[0]))
+        self.search_mode_var = ctk.StringVar(value=self.user_settings.get("search_mode", SEARCH_MODES[0]))
         self.visible_browser_var = ctk.BooleanVar(
             value=bool(self.user_settings.get("visible_browser", self.settings.visible_browser))
         )
         self.status_var = ctk.StringVar(value="Ready for your next Canary trip")
-        self.detail_var = ctk.StringVar(value="Choose dates, times, and preferences, then start the search.")
+        self.detail_var = ctk.StringVar(
+            value="Choose a single search or optimise every trip length in your holiday window."
+        )
         self.count_var = ctk.StringVar(value="0 / 0")
         self.support_var = ctk.StringVar(
             value=(
@@ -134,7 +144,13 @@ class CanaryCarFinderApp:
         body.grid_columnconfigure(1, weight=1)
         body.grid_rowconfigure(0, weight=1)
 
-        form = ctk.CTkFrame(body, fg_color=COLORS["panel"], border_color=COLORS["line"], border_width=1, corner_radius=14)
+        form = ctk.CTkScrollableFrame(
+            body,
+            fg_color=COLORS["panel"],
+            border_color=COLORS["line"],
+            border_width=1,
+            corner_radius=14,
+        )
         form.grid(row=0, column=0, padx=(28, 14), pady=28, sticky="nsew")
         form.grid_columnconfigure(0, weight=1)
 
@@ -151,11 +167,45 @@ class CanaryCarFinderApp:
             font=ctk.CTkFont(size=14),
         ).grid(row=1, column=0, padx=26, pady=(0, 20), sticky="w")
 
-        self._entry(form, "Pickup date", self.pickup_date_var, 2)
-        self._entry(form, "Return date", self.return_date_var, 3)
-        self._option(form, "Pickup time", self.pickup_time_var, TIME_OPTIONS, 4)
-        self._option(form, "Return time", self.return_time_var, TIME_OPTIONS, 5)
-        self._option(form, "Transmission", self.transmission_var, TRANSMISSIONS, 6)
+        mode = ctk.CTkSegmentedButton(
+            form,
+            values=SEARCH_MODES,
+            variable=self.search_mode_var,
+            selected_color=COLORS["ocean"],
+            selected_hover_color=COLORS["deep_ocean"],
+            unselected_color="#edf6f7",
+            unselected_hover_color=COLORS["sand"],
+            text_color=COLORS["ink"],
+            command=lambda _: self._update_mode_help(),
+        )
+        mode.grid(row=2, column=0, padx=26, pady=(0, 18), sticky="ew")
+
+        self.date_help_var = ctk.StringVar()
+        self.length_help_var = ctk.StringVar()
+
+        self._entry(form, "Pickup / earliest departure date", self.pickup_date_var, 3)
+        self._entry(form, "Return / latest return date", self.return_date_var, 4)
+        ctk.CTkLabel(
+            form,
+            textvariable=self.date_help_var,
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=12),
+            wraplength=320,
+        ).grid(row=9, column=0, padx=26, pady=(0, 10), sticky="w")
+        self._entry(form, "Minimum trip length", self.min_days_var, 6)
+        self._entry(form, "Maximum trip length", self.max_days_var, 7)
+        ctk.CTkLabel(
+            form,
+            textvariable=self.length_help_var,
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=12),
+            wraplength=320,
+        ).grid(row=15, column=0, padx=26, pady=(0, 10), sticky="w")
+        self._option(form, "Pickup time", self.pickup_time_var, TIME_OPTIONS, 9)
+        self._option(form, "Return time", self.return_time_var, TIME_OPTIONS, 10)
+        self._option(form, "Transmission", self.transmission_var, TRANSMISSIONS, 11)
+        self._option(form, "Vehicle seats", self.vehicle_seats_var, SEAT_OPTIONS, 12)
+        self._option(form, "Vehicle type", self.vehicle_type_var, VEHICLE_TYPES, 13)
 
         browser_toggle = ctk.CTkSwitch(
             form,
@@ -168,7 +218,7 @@ class CanaryCarFinderApp:
             text_color=COLORS["ink"],
             font=ctk.CTkFont(size=13),
         )
-        browser_toggle.grid(row=14, column=0, padx=26, pady=(10, 18), sticky="w")
+        browser_toggle.grid(row=28, column=0, padx=26, pady=(10, 18), sticky="w")
 
         self.search_button = ctk.CTkButton(
             form,
@@ -181,7 +231,8 @@ class CanaryCarFinderApp:
             font=ctk.CTkFont(size=20, weight="bold"),
             command=self._start_search,
         )
-        self.search_button.grid(row=15, column=0, padx=26, pady=(8, 26), sticky="ew")
+        self.search_button.grid(row=29, column=0, padx=26, pady=(8, 26), sticky="ew")
+        self._update_mode_help()
 
         content = ctk.CTkFrame(body, fg_color="transparent")
         content.grid(row=0, column=1, padx=(14, 28), pady=28, sticky="nsew")
@@ -244,7 +295,7 @@ class CanaryCarFinderApp:
 
         ctk.CTkLabel(
             support,
-            text="🍺 Saved money?",
+            text="Saved money?",
             text_color=COLORS["ink"],
             font=ctk.CTkFont(size=18, weight="bold"),
         ).grid(row=0, column=0, padx=22, pady=(18, 4), sticky="w")
@@ -257,7 +308,7 @@ class CanaryCarFinderApp:
         ).grid(row=1, column=0, padx=22, pady=(0, 16), sticky="w")
         ctk.CTkButton(
             support,
-            text="🍺 Buy me an Estrella",
+            text="Buy me an Estrella",
             width=180,
             height=38,
             fg_color=COLORS["coral"],
@@ -313,7 +364,7 @@ class CanaryCarFinderApp:
             return
 
         try:
-            search_settings = self._search_settings()
+            search_settings, mode = self._search_settings()
         except ValueError as exc:
             self._set_status("Check dates", str(exc), 0, 0)
             self._append_log(f"Input error: {exc}")
@@ -328,7 +379,7 @@ class CanaryCarFinderApp:
         self.support_var.set("Search running. I will show the saving once prices are compared.")
         self._set_status("Starting search", "Preparing provider searches", 0, 0)
 
-        self.worker = threading.Thread(target=self._run_search, args=(search_settings,), daemon=True)
+        self.worker = threading.Thread(target=self._run_search, args=(search_settings, mode), daemon=True)
         self.worker.start()
 
     def _search_settings(self):
@@ -341,24 +392,43 @@ class CanaryCarFinderApp:
         if dropoff <= pickup:
             raise ValueError("Return date must be after pickup date.")
 
-        days = (dropoff - pickup).days
+        total_days = (dropoff - pickup).days
+        mode = "single" if self.search_mode_var.get() == SEARCH_MODES[0] else "full"
+        if mode == "single":
+            min_days = total_days
+            max_days = total_days
+        else:
+            try:
+                min_days = int(self.min_days_var.get().strip())
+                max_days = int(self.max_days_var.get().strip())
+            except ValueError as exc:
+                raise ValueError("Trip lengths must be whole numbers.") from exc
+            if min_days < 1:
+                raise ValueError("Minimum trip length must be at least 1 day.")
+            if max_days < min_days:
+                raise ValueError("Maximum trip length must be greater than or equal to the minimum.")
+            if max_days > total_days:
+                raise ValueError("Maximum trip length cannot exceed the full date window.")
+
         search_settings = replace(
             self.settings,
             start_date=pickup,
             end_date=dropoff,
-            min_days=days,
-            max_days=days,
+            min_days=min_days,
+            max_days=max_days,
             pickup_time=self.pickup_time_var.get(),
             return_time=self.return_time_var.get(),
             final_return_time=self.return_time_var.get(),
             visible_browser=self.visible_browser_var.get(),
         )
         search_settings.transmission = self.transmission_var.get()
-        return search_settings
+        search_settings.vehicle_seats = self.vehicle_seats_var.get()
+        search_settings.vehicle_type = self.vehicle_type_var.get()
+        return search_settings, mode
 
-    def _run_search(self, search_settings):
+    def _run_search(self, search_settings, mode):
         try:
-            rows, reports = run_search(search_settings, "full", progress_callback=self._progress)
+            rows, reports = run_search(search_settings, mode, progress_callback=self._progress)
             self.events.put(("done", rows, reports))
         except Exception as exc:
             self.events.put(("error", exc))
@@ -432,7 +502,7 @@ class CanaryCarFinderApp:
         if len(prices) >= 2:
             saved = max(prices) - min(prices)
             if saved > 0.009:
-                self.support_var.set(f"You saved €{saved:.2f} today. Fancy buying me one Estrella? 🍺")
+                self.support_var.set(f"You saved EUR {saved:.2f} today. Fancy buying me one Estrella?")
                 return
         self.support_var.set(
             "If Canary Car Finder helped you find a cheaper hire car, consider buying me an Estrella."
@@ -520,11 +590,24 @@ class CanaryCarFinderApp:
             "return_date": self.return_date_var.get().strip(),
             "pickup_time": self.pickup_time_var.get(),
             "return_time": self.return_time_var.get(),
+            "min_days": self.min_days_var.get().strip(),
+            "max_days": self.max_days_var.get().strip(),
+            "search_mode": self.search_mode_var.get(),
             "transmission": self.transmission_var.get(),
+            "vehicle_seats": self.vehicle_seats_var.get(),
+            "vehicle_type": self.vehicle_type_var.get(),
             "visible_browser": self.visible_browser_var.get(),
         }
         USER_SETTINGS_PATH.parent.mkdir(exist_ok=True)
         USER_SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def _update_mode_help(self):
+        if self.search_mode_var.get() == SEARCH_MODES[0]:
+            self.date_help_var.set("Single Search uses these as the exact pickup and return dates.")
+            self.length_help_var.set("Trip length fields are saved but ignored in Single Search.")
+        else:
+            self.date_help_var.set("Holiday Optimiser searches every valid trip inside this date window.")
+            self.length_help_var.set("Every trip length between these limits is searched across all providers.")
 
 
 def main():
