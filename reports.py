@@ -1,3 +1,4 @@
+import json
 from html import escape
 from pathlib import Path
 
@@ -103,6 +104,18 @@ def _render_html(df, progress):
         .stat {{ background:rgba(255,255,255,.78); border:1px solid var(--line); border-radius:8px; padding:15px; }}
         .stat-label {{ color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; }}
         .stat-value {{ margin-top:6px; font-size:24px; font-weight:900; }}
+        .filters {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; box-shadow:0 14px 36px rgba(29, 45, 43, .10); padding:16px; margin:20px 0 22px; }}
+        .filter-grid {{ display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; }}
+        .filter-field label {{ display:block; color:var(--muted); font-size:12px; font-weight:900; text-transform:uppercase; margin-bottom:6px; }}
+        .filter-field select, .filter-field input {{ width:100%; min-height:40px; border:1px solid var(--line); border-radius:8px; background:#fbfdfc; color:var(--ink); padding:8px 10px; font:inherit; }}
+        .price-range {{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }}
+        .filter-toggle {{ display:flex; align-items:center; gap:9px; color:var(--ink); font-weight:800; margin-top:12px; }}
+        .filter-toggle input {{ width:18px; height:18px; accent-color:var(--accent); }}
+        .live-summary {{ display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; margin-top:14px; }}
+        .live-summary div {{ background:var(--soft); border:1px solid var(--line); border-radius:8px; padding:11px; }}
+        .live-summary span {{ display:block; color:var(--muted); font-size:11px; font-weight:900; text-transform:uppercase; }}
+        .live-summary strong {{ display:block; margin-top:4px; font-size:18px; }}
+        .is-hidden {{ display:none !important; }}
         .hero-card {{ display:grid; grid-template-columns:minmax(0, 1.35fr) minmax(280px, .65fr); gap:18px; align-items:stretch; margin-bottom:24px; }}
         .winner {{ background:#102623; color:white; border-radius:8px; padding:26px; box-shadow:var(--shadow); min-height:260px; display:flex; flex-direction:column; justify-content:space-between; }}
         .winner .eyebrow {{ color:#b9e4dc; font-size:13px; font-weight:900; text-transform:uppercase; }}
@@ -162,6 +175,7 @@ def _render_html(df, progress):
         @media (max-width:760px) {{
           .topbar, .progress-head, .section-title, .price-line {{ align-items:flex-start; flex-direction:column; }}
           .stats {{ grid-template-columns:repeat(2, minmax(0, 1fr)); }}
+          .filter-grid, .live-summary {{ grid-template-columns:1fr; }}
           .hero-card {{ grid-template-columns:1fr; }}
           .support {{ align-items:flex-start; flex-direction:column; }}
           .winner-price {{ font-size:42px; }}
@@ -181,6 +195,7 @@ def _render_html(df, progress):
           {_status_pill(progress)}
         </div>
         {_hero_html(df)}
+        {_filter_bar_html(df)}
         {_best_holidays_html(df)}
         {_progress_html(progress)}
         {_holiday_summary_html(df, progress)}
@@ -203,6 +218,7 @@ def _render_html(df, progress):
         </div>
         {_support_html(df, app_config)}
       </main>
+      {_filter_script(df)}
     </body>
     </html>
     """
@@ -264,22 +280,114 @@ def _stats_html(df):
     failed = len(df) - len(successful)
     return f"""
       <section class='stats'>
-        {_stat("Best Overall Holiday", _result_label(best))}
-        {_stat("Best Provider", best_provider)}
-        {_stat("Cheapest Automatic", _format_euro(cheapest_auto))}
-        {_stat("Cheapest Manual", _format_euro(cheapest_manual))}
-        {_stat("Average Price", _format_euro(successful["price"].mean() if not successful.empty else None))}
-        {_stat("Highest Price", _format_euro(successful["price"].max() if not successful.empty else None))}
-        {_stat("Lowest Price", _format_euro(successful["price"].min() if not successful.empty else None))}
+        {_live_stat("Best Overall Holiday", _result_label(best), "stat-best-holiday")}
+        {_live_stat("Best Provider", best_provider, "stat-best-provider")}
+        {_live_stat("Cheapest Automatic", _format_euro(cheapest_auto), "stat-cheapest-auto")}
+        {_live_stat("Cheapest Manual", _format_euro(cheapest_manual), "stat-cheapest-manual")}
+        {_live_stat("Average Price", _format_euro(successful["price"].mean() if not successful.empty else None), "stat-average-price")}
+        {_live_stat("Highest Price", _format_euro(successful["price"].max() if not successful.empty else None), "stat-highest-price")}
+        {_live_stat("Lowest Price", _format_euro(successful["price"].min() if not successful.empty else None), "stat-lowest-price")}
         {_stat("Combinations Tested", str(combinations))}
-        {_stat("Successful Searches", str(len(successful)))}
-        {_stat("Failed Searches", str(failed))}
+        {_live_stat("Successful Searches", str(len(successful)), "stat-successful-searches")}
+        {_live_stat("Failed Searches", str(failed), "stat-failed-searches")}
       </section>
     """
 
 
 def _stat(label, value):
     return f"<div class='stat'><div class='stat-label'>{escape(label)}</div><div class='stat-value'>{value}</div></div>"
+
+
+def _live_stat(label, value, stat_id):
+    return (
+        f"<div class='stat'><div class='stat-label'>{escape(label)}</div>"
+        f"<div class='stat-value' id='{escape(stat_id)}'>{value}</div></div>"
+    )
+
+
+def _filter_bar_html(df):
+    successful = _successful(df)
+    if successful.empty:
+        return ""
+
+    trip_lengths = _option_values(successful, "days_elapsed", formatter=lambda value: f"{int(value)} days")
+    seats = _seat_filter_values(successful)
+    transmissions = _option_values(successful, "_transmission")
+    vehicle_types = _option_values(successful, "_vehicle_type")
+    providers = _option_values(successful, "provider")
+    low = successful["price"].min()
+    high = successful["price"].max()
+
+    return f"""
+      <section class='filters' aria-label='Filter results'>
+        <div class='section-title' style='margin-top:0'>
+          <h2>Filter Results</h2>
+          <span class='subtitle'>Instantly refine this report without running another search.</span>
+        </div>
+        <div class='filter-grid'>
+          {_select_filter("Trip Length", "filter-trip", trip_lengths)}
+          {_select_filter("Seats", "filter-seats", seats)}
+          {_select_filter("Transmission", "filter-transmission", transmissions)}
+          {_select_filter("Vehicle Type", "filter-type", vehicle_types)}
+          {_select_filter("Provider", "filter-provider", providers)}
+          <div class='filter-field'>
+            <label>Price Range</label>
+            <div class='price-range'>
+              <input id='filter-min-price' type='number' min='0' step='0.01' placeholder='Min' value='{f"{float(low):.2f}" if not pd.isna(low) else ""}'>
+              <input id='filter-max-price' type='number' min='0' step='0.01' placeholder='Max' value='{f"{float(high):.2f}" if not pd.isna(high) else ""}'>
+            </div>
+          </div>
+          {_select_filter("Sort Order", "filter-sort", [
+              ("price-asc", "Cheapest first"),
+              ("daily-asc", "Lowest daily price"),
+              ("trip-asc", "Shortest trip"),
+              ("trip-desc", "Longest trip"),
+              ("provider", "Provider"),
+          ], include_all=False)}
+        </div>
+        <label class='filter-toggle'>
+          <input id='filter-cheapest-holiday' type='checkbox'>
+          <span>Show only the cheapest option for each holiday.</span>
+        </label>
+        <div class='live-summary'>
+          <div><span>Matching results</span><strong id='live-count'>0</strong></div>
+          <div><span>Cheapest visible option</span><strong id='live-cheapest'>N/A</strong></div>
+          <div><span>Cheapest provider</span><strong id='live-provider'>N/A</strong></div>
+          <div><span>Average visible price</span><strong id='live-average'>N/A</strong></div>
+        </div>
+      </section>
+    """
+
+
+def _select_filter(label, element_id, options, include_all=True):
+    choices = ["<option value=''>Any</option>"] if include_all else []
+    for value, text in options:
+        choices.append(f"<option value='{escape(str(value), quote=True)}'>{escape(str(text))}</option>")
+    return f"""
+      <div class='filter-field'>
+        <label for='{escape(element_id)}'>{escape(label)}</label>
+        <select id='{escape(element_id)}'>{"".join(choices)}</select>
+      </div>
+    """
+
+
+def _option_values(df, column, formatter=None):
+    if column not in df.columns:
+        return []
+    values = []
+    for value in df[column].dropna().unique():
+        if value == "":
+            continue
+        label = formatter(value) if formatter else str(value)
+        values.append((str(value), label))
+    return sorted(values, key=lambda item: item[1])
+
+
+def _seat_filter_values(df):
+    if "_seats" not in df.columns:
+        return []
+    seats = sorted({int(value) for value in df["_seats"].dropna() if value})
+    return [(str(value), f"{value}+ seats") for value in seats]
 
 
 def _holiday_summary_html(df, progress):
@@ -334,7 +442,7 @@ def _best_holidays_html(df):
         saving = float(next_price) - float(row.get("price")) if next_price is not None else None
         rows.append(
             f"""
-            <tr id='result-{escape(_anchor(row))}'>
+            <tr id='result-{escape(_anchor(row))}' data-best-key='{escape(_row_key(row), quote=True)}'>
               <td>{index}</td>
               <td>{escape(_text(row.get("provider"), ""))}</td>
               <td>{_source_badge(row)}</td>
@@ -356,7 +464,7 @@ def _best_holidays_html(df):
       <div class='best-table'>
         <table>
           <thead><tr><th>Rank</th><th>Provider</th><th>Source</th><th>Vehicle</th><th>Departure</th><th>Return</th><th>Trip</th><th>Pickup</th><th>Return time</th><th>Total</th><th>Daily</th><th>Saves vs next</th><th>Book</th></tr></thead>
-          <tbody>{"".join(rows)}</tbody>
+          <tbody id='best-holidays-body'>{"".join(rows)}</tbody>
         </table>
       </div>
     """
@@ -397,12 +505,12 @@ def _search_statistics_html(df):
     return f"""
       <div class='section-title'><h2>Search Statistics</h2><span class='subtitle'>Calculated from completed results</span></div>
       <section class='stats'>
-        {_stat("Total Searches Performed", str(len(df)))}
-        {_stat("Average Provider Price", _format_euro(successful["price"].mean() if not successful.empty else None))}
-        {_stat("Cheapest Provider Overall", _best_provider(successful))}
+        {_live_stat("Total Searches Performed", str(len(df)), "stat-total-searches")}
+        {_live_stat("Average Provider Price", _format_euro(successful["price"].mean() if not successful.empty else None), "stat-average-provider-price")}
+        {_live_stat("Cheapest Provider Overall", _best_provider(successful), "stat-cheapest-provider-overall")}
         {_stat("Provider Win Count", win_text)}
-        {_stat("Cheapest Day To Depart", cheapest_depart)}
-        {_stat("Cheapest Trip Length", cheapest_length)}
+        {_live_stat("Cheapest Day To Depart", cheapest_depart, "stat-cheapest-departure")}
+        {_live_stat("Cheapest Trip Length", cheapest_length, "stat-cheapest-trip-length")}
       </section>
     """
 
@@ -466,7 +574,7 @@ def _card_html(row, cheapest, next_cheapest):
     badge = f"<div class='badge'>{escape(badge_text)}</div>" if badge_text else ""
     comparison = _comparison(price, cheapest, next_cheapest, success)
     return f"""
-      <article class='card {card_class}' id='depart-{_date_id(row.get("pickup"))}'>
+      <article class='card {card_class}' id='depart-{_date_id(row.get("pickup"))}' data-result-key='{escape(_row_key(row), quote=True)}'>
         <div class='media'>
           {_image_html(image, vehicle)}
           {_logo_html(logo, provider)}
@@ -562,6 +670,27 @@ def _anchor(row):
             _date_id(row.get("dropoff")),
         ]
     )
+
+
+def _row_key(row):
+    return "-".join(
+        [
+            _text(row.get("provider"), "provider").lower().replace(" ", "-"),
+            _date_id(row.get("pickup")),
+            _date_id(row.get("dropoff")),
+            _safe_id(row.get("actual_pickup_time") or row.get("pickup_time")),
+            _safe_id(row.get("actual_return_time") or row.get("return_time")),
+            _safe_id(row.get("vehicle")),
+            _safe_id(row.get("price")),
+            _safe_id(row.name),
+        ]
+    )
+
+
+def _safe_id(value):
+    if pd.isna(value) or value is None:
+        return "na"
+    return "".join(character.lower() if character.isalnum() else "_" for character in str(value)).strip("_") or "na"
 
 
 def _table_html(df):
@@ -735,3 +864,284 @@ def _time_html(row, kind):
 def _initials(value):
     words = [part for part in str(value).replace("-", " ").split() if part]
     return "".join(word[0].upper() for word in words[:2]) or "CC"
+
+
+def _filter_script(df):
+    successful = _successful(df)
+    if successful.empty:
+        return ""
+    payload = json.dumps(_filter_rows(successful), ensure_ascii=False).replace("</", "<\\/")
+    return f"""
+      <script type='application/json' id='report-data'>{payload}</script>
+      <script>
+      (() => {{
+        const dataNode = document.getElementById('report-data');
+        if (!dataNode) return;
+        const rows = JSON.parse(dataNode.textContent);
+        const cards = new Map([...document.querySelectorAll('[data-result-key]')].map(card => [card.dataset.resultKey, card]));
+        const cardsContainer = document.querySelector('.cards');
+        const bestBody = document.getElementById('best-holidays-body');
+        const providerOrder = {json.dumps(PROVIDER_ORDER)};
+        const controls = {{
+          trip: document.getElementById('filter-trip'),
+          seats: document.getElementById('filter-seats'),
+          transmission: document.getElementById('filter-transmission'),
+          type: document.getElementById('filter-type'),
+          provider: document.getElementById('filter-provider'),
+          minPrice: document.getElementById('filter-min-price'),
+          maxPrice: document.getElementById('filter-max-price'),
+          sort: document.getElementById('filter-sort'),
+          cheapestHoliday: document.getElementById('filter-cheapest-holiday')
+        }};
+
+        const money = value => Number.isFinite(value) ? `&euro;${{value.toFixed(2)}}` : 'N/A';
+        const numberValue = input => {{
+          const value = parseFloat(input?.value || '');
+          return Number.isFinite(value) ? value : null;
+        }};
+        const text = value => value || 'N/A';
+        const compareRows = (a, b, sortMode = 'price-asc') => {{
+          if (sortMode === 'daily-asc') return (a.daily ?? Infinity) - (b.daily ?? Infinity) || baseCompare(a, b);
+          if (sortMode === 'trip-asc') return (a.days ?? Infinity) - (b.days ?? Infinity) || baseCompare(a, b);
+          if (sortMode === 'trip-desc') return (b.days ?? -Infinity) - (a.days ?? -Infinity) || baseCompare(a, b);
+          if (sortMode === 'provider') return a.provider.localeCompare(b.provider) || baseCompare(a, b);
+          return baseCompare(a, b);
+        }};
+        const baseCompare = (a, b) => (
+          (a.price ?? Infinity) - (b.price ?? Infinity) ||
+          (a.daily ?? Infinity) - (b.daily ?? Infinity) ||
+          ((providerOrder[a.provider] ?? 99) - (providerOrder[b.provider] ?? 99))
+        );
+        const visibleRows = () => {{
+          const trip = controls.trip?.value || '';
+          const seats = numberValue(controls.seats);
+          const transmission = controls.transmission?.value || '';
+          const type = controls.type?.value || '';
+          const provider = controls.provider?.value || '';
+          const minPrice = numberValue(controls.minPrice);
+          const maxPrice = numberValue(controls.maxPrice);
+          let filtered = rows.filter(row => {{
+            if (trip && String(row.days) !== trip) return false;
+            if (seats !== null && (!Number.isFinite(row.seats) || row.seats < seats)) return false;
+            if (transmission && row.transmission !== transmission) return false;
+            if (type && row.vehicleType !== type) return false;
+            if (provider && row.provider !== provider) return false;
+            if (minPrice !== null && (!Number.isFinite(row.price) || row.price < minPrice)) return false;
+            if (maxPrice !== null && (!Number.isFinite(row.price) || row.price > maxPrice)) return false;
+            return true;
+          }});
+          filtered = filtered.sort((a, b) => compareRows(a, b, controls.sort?.value || 'price-asc'));
+          if (controls.cheapestHoliday?.checked) {{
+            const seen = new Set();
+            filtered = filtered.filter(row => {{
+              if (seen.has(row.holidayKey)) return false;
+              seen.add(row.holidayKey);
+              return true;
+            }});
+          }}
+          return filtered;
+        }};
+        const setHtml = (id, value) => {{
+          const node = document.getElementById(id);
+          if (node) node.innerHTML = value;
+        }};
+        const cheapestProvider = visible => visible[0]?.provider || 'N/A';
+        const winCountProvider = visible => {{
+          if (!visible.length) return 'N/A';
+          const byHoliday = new Map();
+          visible.forEach(row => {{
+            const current = byHoliday.get(row.holidayKey);
+            if (!current || baseCompare(row, current) < 0) byHoliday.set(row.holidayKey, row);
+          }});
+          const counts = new Map();
+          byHoliday.forEach(row => counts.set(row.provider, (counts.get(row.provider) || 0) + 1));
+          return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] || 'N/A';
+        }};
+        const cheapestByTransmission = (visible, transmission) => visible.find(row => row.transmission === transmission)?.price;
+        const cheapestDeparture = visible => {{
+          if (!visible.length) return 'N/A';
+          const best = visible.reduce((winner, row) => !winner || row.price < winner.price ? row : winner, null);
+          return `${{best.pickupDisplay}}<br>${{money(best.price)}}`;
+        }};
+        const cheapestTripLength = visible => {{
+          if (!visible.length) return 'N/A';
+          const byLength = new Map();
+          visible.forEach(row => {{
+            const current = byLength.get(row.days);
+            if (!current || row.price < current.price) byLength.set(row.days, row);
+          }});
+          const best = [...byLength.values()].sort(baseCompare)[0];
+          return best ? `${{best.days}} days<br>${{money(best.price)}}` : 'N/A';
+        }};
+        const renderBest = visible => {{
+          if (!bestBody) return;
+          const best = visible.slice(0, 20);
+          if (!best.length) {{
+            bestBody.innerHTML = '<tr><td colspan="13">No results match these filters.</td></tr>';
+            return;
+          }}
+          bestBody.innerHTML = best.map((row, index) => {{
+            const next = best[index + 1];
+            const saving = next && Number.isFinite(next.price) ? next.price - row.price : null;
+            return `<tr data-best-key="${{row.key}}">
+              <td>${{index + 1}}</td>
+              <td>${{escapeHtml(row.provider)}}</td>
+              <td><span class="source ${{row.source === 'CACHE' ? 'cache' : 'live'}}">${{escapeHtml(row.source)}}</span></td>
+              <td>${{escapeHtml(row.vehicle)}}</td>
+              <td>${{row.pickupDisplay}}</td>
+              <td>${{row.dropoffDisplay}}</td>
+              <td>${{row.days ?? 'N/A'}}</td>
+              <td>${{timeHtml(row.requestedPickupTime, row.actualPickupTime)}}</td>
+              <td>${{timeHtml(row.requestedReturnTime, row.actualReturnTime)}}</td>
+              <td>${{money(row.price)}}</td>
+              <td>${{money(row.daily)}}</td>
+              <td>${{saving && saving > 0.009 ? money(saving) : 'N/A'}}</td>
+              <td>${{row.url ? `<a class="book" href="${{escapeAttr(row.url)}}">Book</a>` : ''}}</td>
+            </tr>`;
+          }}).join('');
+        }};
+        const updateCards = visible => {{
+          if (!cardsContainer) return;
+          const visibleKeys = new Set(visible.map(row => row.key));
+          cards.forEach((card, key) => card.classList.toggle('is-hidden', !visibleKeys.has(key)));
+          const cheapest = visible[0]?.price;
+          const nextCheapest = visible[1]?.price;
+          visible.forEach(row => {{
+            const card = cards.get(row.key);
+            if (card) {{
+              refreshCardBand(card, row, cheapest, nextCheapest);
+              cardsContainer.appendChild(card);
+            }}
+          }});
+        }};
+        const refreshCardBand = (card, row, cheapest, nextCheapest) => {{
+          card.classList.remove('cheapest', 'near10', 'near25', 'above25');
+          let badgeText = '';
+          let comparison = 'Awaiting comparison';
+          let comparisonClass = 'comparison';
+          if (Number.isFinite(row.price) && Number.isFinite(cheapest)) {{
+            const delta = row.price - cheapest;
+            if (delta <= 0.009) {{
+              card.classList.add('cheapest');
+              badgeText = 'Cheapest';
+              comparison = Number.isFinite(nextCheapest) && nextCheapest - row.price > 0.009
+                ? `Saves ${{money(nextCheapest - row.price)}} vs next option`
+                : 'Cheapest option found';
+            }} else if (delta <= 10) {{
+              card.classList.add('near10');
+              badgeText = 'Within EUR 10';
+              comparison = `Cheapest saves ${{money(delta)}} vs this option`;
+              comparisonClass = 'comparison more';
+            }} else if (delta <= 25) {{
+              card.classList.add('near25');
+              badgeText = 'Within EUR 25';
+              comparison = `Cheapest saves ${{money(delta)}} vs this option`;
+              comparisonClass = 'comparison more';
+            }} else {{
+              card.classList.add('above25');
+              badgeText = 'More than EUR 25 above';
+              comparison = `Cheapest saves ${{money(delta)}} vs this option`;
+              comparisonClass = 'comparison more';
+            }}
+          }}
+          let badge = card.querySelector('.badge');
+          if (!badge) {{
+            badge = document.createElement('div');
+            badge.className = 'badge';
+            card.querySelector('.media')?.appendChild(badge);
+          }}
+          badge.textContent = badgeText;
+          badge.classList.toggle('is-hidden', !badgeText);
+          const comparisonNode = card.querySelector('.comparison');
+          if (comparisonNode) {{
+            comparisonNode.className = comparisonClass;
+            comparisonNode.innerHTML = comparison;
+          }}
+        }};
+        const updateStats = visible => {{
+          const count = visible.length;
+          const average = count ? visible.reduce((total, row) => total + row.price, 0) / count : null;
+          const highest = count ? Math.max(...visible.map(row => row.price)) : null;
+          const lowest = count ? Math.min(...visible.map(row => row.price)) : null;
+          const failedCount = rows.length - count;
+          setHtml('live-count', String(count));
+          setHtml('live-cheapest', count ? `${{visible[0].provider}}<br>${{money(visible[0].price)}}` : 'N/A');
+          setHtml('live-provider', cheapestProvider(visible));
+          setHtml('live-average', money(average));
+          setHtml('stat-best-holiday', count ? `${{escapeHtml(visible[0].provider)}}<br>${{money(visible[0].price)}}` : 'N/A');
+          setHtml('stat-best-provider', winCountProvider(visible));
+          setHtml('stat-cheapest-auto', money(cheapestByTransmission(visible, 'Automatic')));
+          setHtml('stat-cheapest-manual', money(cheapestByTransmission(visible, 'Manual')));
+          setHtml('stat-average-price', money(average));
+          setHtml('stat-highest-price', money(highest));
+          setHtml('stat-lowest-price', money(lowest));
+          setHtml('stat-successful-searches', String(count));
+          setHtml('stat-failed-searches', String(failedCount));
+          setHtml('stat-total-searches', String(count));
+          setHtml('stat-average-provider-price', money(average));
+          setHtml('stat-cheapest-provider-overall', winCountProvider(visible));
+          setHtml('stat-cheapest-departure', cheapestDeparture(visible));
+          setHtml('stat-cheapest-trip-length', cheapestTripLength(visible));
+        }};
+        const applyFilters = () => {{
+          const visible = visibleRows();
+          renderBest(visible);
+          updateCards(visible);
+          updateStats(visible);
+        }};
+        const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[char]));
+        const escapeAttr = value => escapeHtml(value).replace(/`/g, '&#96;');
+        const timeHtml = (requested, actual) => `<span class="time-pair">Requested ${{escapeHtml(requested || 'N/A')}}<br>Actual searched ${{escapeHtml(actual || 'N/A')}}</span>`;
+        Object.values(controls).forEach(control => control?.addEventListener('input', applyFilters));
+        Object.values(controls).forEach(control => control?.addEventListener('change', applyFilters));
+        applyFilters();
+      }})();
+      </script>
+    """
+
+
+def _filter_rows(df):
+    rows = []
+    for _, row in df.iterrows():
+        rows.append(
+            {
+                "key": _row_key(row),
+                "holidayKey": "|".join(
+                    [
+                        _text(row.get("pickup"), ""),
+                        _text(row.get("dropoff"), ""),
+                        _text(row.get("requested_pickup_time"), _text(row.get("pickup_time"), "")),
+                        _text(row.get("requested_return_time"), _text(row.get("return_time"), "")),
+                    ]
+                ),
+                "provider": _text(row.get("provider"), "Provider"),
+                "source": _text(row.get("_result_source"), "LIVE").upper(),
+                "vehicle": _text(row.get("vehicle"), "Vehicle unavailable"),
+                "pickup": _text(row.get("pickup"), ""),
+                "dropoff": _text(row.get("dropoff"), ""),
+                "pickupDisplay": _date_text(row.get("pickup")),
+                "dropoffDisplay": _date_text(row.get("dropoff")),
+                "days": _json_number(row.get("days_elapsed"), integer=True),
+                "seats": _json_number(row.get("_seats"), integer=True),
+                "transmission": "" if pd.isna(row.get("_transmission")) else str(row.get("_transmission")),
+                "vehicleType": "" if pd.isna(row.get("_vehicle_type")) else str(row.get("_vehicle_type")),
+                "price": _json_number(row.get("price")),
+                "daily": _json_number(row.get("effective_daily")),
+                "requestedPickupTime": _text(row.get("requested_pickup_time"), _text(row.get("pickup_time"), "")),
+                "actualPickupTime": _text(row.get("actual_pickup_time"), _text(row.get("pickup_time"), "")),
+                "requestedReturnTime": _text(row.get("requested_return_time"), _text(row.get("return_time"), "")),
+                "actualReturnTime": _text(row.get("actual_return_time"), _text(row.get("return_time"), "")),
+                "url": "" if pd.isna(row.get("url")) else str(row.get("url")),
+            }
+        )
+    return rows
+
+
+def _json_number(value, integer=False):
+    if pd.isna(value) or value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return int(number) if integer else number
