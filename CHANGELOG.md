@@ -6,12 +6,14 @@
 - Improved report recommendation wording and presentation.
 - Updated support and holiday-home links.
 - Polished user-facing wording across the desktop app and report.
-- Redesigned search choices as Quick Search, Smart Search and Thorough Search.
+- Redesigned search choices around Compare My Dates and Find My Cheapest Hire During My Holiday.
 - Added clearer runtime estimates for long searches.
 - Added a live search dashboard with pause and stop controls.
 - Improved recommendation badges in the HTML report.
 - Improved the Windows release build so `build_windows.bat` creates a complete versioned release folder and ZIP.
-- Redesigned search planning to use pickup/return time windows, deduplicate provider-adjusted requests before estimating runtime, and search common hire lengths first.
+- Refined search planning so the app looks at sensible hire ideas first and avoids unnecessary checks.
+- Added PRODUCT_DIRECTION.md as the source of truth for the product reset.
+- Began Phase 1 alignment around Compare My Dates and Find My Cheapest Hire During My Holiday.
 
 # v1.1.0
 

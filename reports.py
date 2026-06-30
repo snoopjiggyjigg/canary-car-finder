@@ -168,6 +168,10 @@ def _render_html(df, progress):
         .comparison {{ border-top:1px solid var(--line); padding-top:12px; font-weight:900; color:var(--accent); }}
         .comparison.more {{ color:#835b00; }}
         .comparison.failed {{ color:var(--danger); }}
+        .insights {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-bottom:24px; }}
+        .insight {{ background:white; border:1px solid var(--line); border-radius:8px; padding:18px; box-shadow:0 8px 24px rgba(29, 45, 43, .07); }}
+        .insight strong {{ display:block; font-size:18px; margin-bottom:6px; }}
+        .insight p {{ margin:0; color:var(--muted); line-height:1.45; }}
         .support {{ margin-top:24px; background:#fff7e8; border:1px solid #ead8b3; border-radius:8px; padding:22px; display:flex; align-items:center; justify-content:space-between; gap:18px; }}
         .support h2 {{ margin:0 0 6px; font-size:22px; }}
         .support p {{ margin:0; color:var(--muted); line-height:1.5; }}
@@ -203,14 +207,17 @@ def _render_html(df, progress):
         </div>
         {_progress_html(progress)}
         {_hero_html(df)}
+        {_why_recommend_html(df)}
+        {_savings_html(df)}
+        {_insights_html(df)}
         {_best_holidays_html(df)}
-        {_filter_bar_html(df)}
-        {_holiday_summary_html(df, progress)}
-        {_stats_html(df)}
-        {_price_calendar_html(df)}
-        {_search_statistics_html(df)}
         <div class='section-title'>
-          <h2>More Cars To Compare</h2>
+          <h2>Detailed Comparison</h2>
+          <span class='subtitle'>Use this if you want to look beyond the recommendation.</span>
+        </div>
+        {_filter_bar_html(df)}
+        <div class='section-title'>
+          <h2>All Cars Found</h2>
           <span class='subtitle'>{len(df)} prices checked</span>
         </div>
         <section class='cards'>
@@ -223,6 +230,10 @@ def _render_html(df, progress):
         <div class='table-wrap'>
           {_table_html(df)}
         </div>
+        {_holiday_summary_html(df, progress)}
+        {_stats_html(df)}
+        {_price_calendar_html(df)}
+        {_search_statistics_html(df)}
         {_final_search_summary_html(df, progress)}
         {_support_html(df, app_config)}
         {_holiday_home_html(app_config)}
@@ -296,10 +307,97 @@ def _stats_html(df):
         {_live_stat("Average Price", _format_euro(successful["price"].mean() if not successful.empty else None), "stat-average-price")}
         {_live_stat("Highest Price", _format_euro(successful["price"].max() if not successful.empty else None), "stat-highest-price")}
         {_live_stat("Lowest Price", _format_euro(successful["price"].min() if not successful.empty else None), "stat-lowest-price")}
-        {_stat("Date Choices Checked", str(combinations))}
+        {_stat("Hire Ideas Checked", str(combinations))}
         {_live_stat("Prices Found", str(len(successful)), "stat-successful-searches")}
         {_live_stat("Checks Without A Price", str(failed), "stat-failed-searches")}
       </section>
+    """
+
+
+def _insight_card(title, body):
+    return f"<article class='insight'><strong>{escape(title)}</strong><p>{escape(body)}</p></article>"
+
+
+def _why_recommend_html(df):
+    successful = _successful(df)
+    if successful.empty:
+        return ""
+    best = successful.iloc[0]
+    return f"""
+      <div class='section-title'><h2>Why We Recommend It</h2><span class='subtitle'>The plain-English reasons this option stands out</span></div>
+      <section class='insights'>
+        {_insight_card("Best trusted price", f"{_text(best.get('provider'), 'This provider')} returned the lowest confirmed price we found.")}
+        {_insight_card("Fits your holiday", f"{_date_text(best.get('pickup'))} to {_date_text(best.get('dropoff'))}, for {int(best.get('days_elapsed')) if not pd.isna(best.get('days_elapsed')) else 'N/A'} days.")}
+        {_insight_card("Good value per day", f"The effective daily price is {_format_euro(best.get('effective_daily'))}.")}
+      </section>
+    """
+
+
+def _savings_html(df):
+    successful = _successful(df)
+    if len(successful) < 2:
+        return ""
+    best = successful.iloc[0]
+    next_best = successful.iloc[1]
+    saving = float(next_best.get("price")) - float(best.get("price"))
+    cards = []
+    if saving > 0.009:
+        cards.append(_insight_card("You beat the next option", f"The recommendation is {_format_euro(saving)} cheaper than the next best result we found."))
+
+    full_holiday = successful[successful["days_elapsed"] == successful["days_elapsed"].max()]
+    if not full_holiday.empty and best.get("price"):
+        full_best = full_holiday.sort_values(["price", "effective_daily"]).iloc[0]
+        extra = float(full_best.get("price")) - float(best.get("price"))
+        if extra > 0:
+            cards.append(_insight_card("Full-holiday hire check", f"Keeping a car for the longest hire we checked costs {_format_euro(extra)} more than the recommendation."))
+        elif extra < -0.009:
+            cards.append(_insight_card("Longer hire surprise", f"The longest hire we checked was {_format_euro(abs(extra))} cheaper than the current recommendation."))
+
+    by_length = successful.groupby("days_elapsed", as_index=False)["price"].min().sort_values("price")
+    if len(by_length) > 1:
+        cheapest_length = int(by_length.iloc[0]["days_elapsed"])
+        next_length = int(by_length.iloc[1]["days_elapsed"])
+        delta = float(by_length.iloc[1]["price"]) - float(by_length.iloc[0]["price"])
+        if delta > 0.009:
+            cards.append(_insight_card("Hire length matters", f"{cheapest_length} days was {_format_euro(delta)} cheaper than the next best length we checked ({next_length} days)."))
+
+    if not cards:
+        return ""
+    return f"""
+      <div class='section-title'><h2>Ways You Could Save Even More</h2><span class='subtitle'>Useful price differences found during the search</span></div>
+      <section class='insights'>{"".join(cards[:4])}</section>
+    """
+
+
+def _insights_html(df):
+    successful = _successful(df)
+    if successful.empty:
+        return ""
+    cards = []
+    provider_wins = _provider_win_counts(successful)
+    if provider_wins:
+        provider, wins = next(iter(provider_wins.items()))
+        cards.append(_insight_card("Provider pattern", f"{provider} was cheapest most often in the results checked ({wins} wins)."))
+
+    cheapest_depart = _cheapest_departure(successful)
+    if cheapest_depart != "N/A":
+        cards.append(_insight_card("Cheapest collection date", f"The lowest price found started on {cheapest_depart}."))
+
+    cheapest_length = _cheapest_trip_length(successful)
+    if cheapest_length != "N/A":
+        cards.append(_insight_card("Best hire length found", f"The best-value hire length in these results was {cheapest_length}."))
+
+    transmissions = successful.dropna(subset=["_transmission"]) if "_transmission" in successful.columns else pd.DataFrame()
+    if not transmissions.empty and transmissions["_transmission"].nunique() > 1:
+        cheapest_by_transmission = transmissions.groupby("_transmission", as_index=False)["price"].min().sort_values("price")
+        winner = cheapest_by_transmission.iloc[0]
+        cards.append(_insight_card("Transmission note", f"The cheapest {winner['_transmission']} option was {_format_euro(winner['price'])}."))
+
+    if not cards:
+        return ""
+    return f"""
+      <div class='section-title'><h2>Interesting Things We Discovered</h2><span class='subtitle'>These are often more useful than a long price table</span></div>
+      <section class='insights'>{"".join(cards[:4])}</section>
     """
 
 
@@ -415,12 +513,9 @@ def _holiday_summary_html(df, progress):
         {_stat("Holiday Lengths", escape(str(summary.get("trip_length_range", "N/A"))))}
         {_stat("Collection Times", escape(str(summary.get("pickup_time_options", "N/A"))))}
         {_stat("Return Times", escape(str(summary.get("return_time_options", "N/A"))))}
-        {_stat("Date Choices", str(summary.get("date_combinations_generated", 0)))}
-        {_stat("Time Choices", str(summary.get("time_combinations_generated", 0)))}
-        {_stat("Search Size", escape(str(summary.get("search_size_band", "N/A"))))}
-        {_stat("Raw Choices Generated", str(summary.get("total_combinations_generated", 0)))}
-        {_stat("Repeated Checks Skipped", str(summary.get("duplicate_searches_removed", 0)))}
-        {_stat("Provider Searches", str(summary.get("total_provider_searches", summary.get("provider_searches_completed", 0))))}
+        {_stat("Hire Ideas Considered", str(summary.get("date_combinations_generated", 0)))}
+        {_stat("Collection Times Considered", str(summary.get("time_combinations_generated", 0)))}
+        {_stat("Prices Checked", str(summary.get("total_provider_searches", summary.get("provider_searches_completed", 0))))}
         {_stat("Recent Results Used", str(summary.get("cache_hits", 0)))}
         {_stat("Fresh Prices Checked", str(summary.get("live_searches", 0)))}
         {_stat("Provider Visits", str(summary.get("browser_sessions_opened", 0)))}
@@ -440,7 +535,7 @@ def _best_holidays_html(df):
     successful = _successful(df).head(20)
     if successful.empty:
         return """
-          <div class='section-title'><h2>20 Cheapest Options</h2><span class='subtitle'>Waiting for prices</span></div>
+          <div class='section-title'><h2>Other Good Choices</h2><span class='subtitle'>Waiting for prices</span></div>
           <div class='best-table'><table><tbody><tr><td>No prices found yet.</td></tr></tbody></table></div>
         """
 
@@ -469,7 +564,7 @@ def _best_holidays_html(df):
             """
         )
     return f"""
-      <div class='section-title'><h2>20 Cheapest Options</h2><span class='subtitle'>The lowest prices found for your holiday choices</span></div>
+      <div class='section-title'><h2>Other Good Choices</h2><span class='subtitle'>Strong alternatives if you want to compare before booking</span></div>
       <div class='best-table'>
         <table>
           <thead><tr><th>Rank</th><th>Company</th><th>Checked</th><th>Car</th><th>Collect</th><th>Return</th><th>Days</th><th>Collection time</th><th>Return time</th><th>Total</th><th>Per day</th><th>Saves vs next</th><th>Continue</th></tr></thead>
@@ -531,13 +626,13 @@ def _hero_html(df):
           <section class='hero-card'>
             <div class='winner'>
               <div>
-                <div class='eyebrow'>Recommended Booking</div>
+                <div class='eyebrow'>Our Recommendation</div>
                 <h2>No confirmed prices yet</h2>
                 <p class='winner-meta'>Results will appear here as each provider completes a search.</p>
               </div>
               <div class='winner-price'>--</div>
             </div>
-            <aside class='side-panel'><h2>Why this matters</h2><p>The report refreshes while searches are running and keeps CSV/XLSX exports unchanged.</p></aside>
+            <aside class='side-panel'><h2>What happens next</h2><p>As prices arrive, the recommendation will update automatically.</p></aside>
           </section>
         """
 
@@ -546,15 +641,15 @@ def _hero_html(df):
       <section class='hero-card'>
         <div class='winner'>
           <div>
-            <div class='eyebrow'>Recommended Booking</div>
+            <div class='eyebrow'>Our Recommendation</div>
             <h2>{escape(_text(best.get("vehicle"), "Vehicle unavailable"))}</h2>
             <p class='winner-meta'>{escape(_text(best.get("provider"), "Provider"))} from {_date_text(best.get("pickup"))} {_time_html(best, "pickup")} to {_date_text(best.get("dropoff"))} {_time_html(best, "return")}</p>
           </div>
           <div class='winner-price'>{_format_euro(best.get("price"))}</div>
         </div>
         <aside class='side-panel'>
-          <h2>Why this was chosen</h2>
-          {_recommendation_reason(best, successful)}
+          <h2>At a glance</h2>
+          <p>{escape(_text(best.get("provider"), "Provider"))} is currently the best-value trusted option found for these dates.</p>
         </aside>
       </section>
     """
@@ -775,21 +870,19 @@ def _final_search_summary_html(df, progress):
     manual_saved = summary.get("estimated_time_saved_seconds")
     provider_count = summary.get("provider_count", 4)
     return f"""
-      <div class='section-title'><h2>What We Checked For You</h2><span class='subtitle'>A plain-English summary of the work done</span></div>
+      <div class='section-title'><h2>Search Summary</h2><span class='subtitle'>A plain-English summary of the work done</span></div>
       <section class='stats'>
-        {_stat("Date Choices", str(summary.get("date_combinations_generated", 0)))}
-        {_stat("Time Choices", str(summary.get("time_combinations_generated", 0)))}
-        {_stat("Repeated Checks Skipped", str(summary.get("duplicate_searches_removed", 0)))}
+        {_stat("Hire Ideas Considered", str(summary.get("date_combinations_generated", 0)))}
+        {_stat("Collection Times Considered", str(summary.get("time_combinations_generated", 0)))}
         {_stat("Prices Checked", str(summary.get("total_provider_searches", completed)))}
-        {_stat("Provider Websites Visited", str(summary.get("browser_sessions_opened", 0)))}
+        {_stat("Trusted Websites Visited", str(summary.get("browser_sessions_opened", 0)))}
         {_stat("Recent Results Reused", str(summary.get("cache_hits", 0)))}
         {_stat("Time Taken", _duration(duration))}
-        {_stat("Average Search Speed", f"{speed:.1f}s per price" if speed else "N/A")}
         {_stat("Estimated Manual Time Saved", _duration(manual_saved))}
       </section>
       <aside class='side-panel'>
         <h2>Real prices, less legwork</h2>
-        <p>This search checked {completed} real prices across {provider_count} trusted providers so you did not have to.</p>
+        <p>This search compared real prices across {provider_count} trusted local providers so you did not have to check each website yourself.</p>
       </aside>
     """
 
