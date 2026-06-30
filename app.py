@@ -27,13 +27,17 @@ TIME_OPTIONS = [f"{hour:02d}:{minute:02d}" for hour in range(6, 24) for minute i
 PICKUP_TIME_OPTIONS = TIME_OPTIONS
 RETURN_TIME_OPTIONS = TIME_OPTIONS
 TRANSMISSIONS = ["Any", "Manual", "Automatic"]
-SEARCH_PRESETS = ["Quick Search", "Holiday Optimiser", "Deep Search"]
+COMPARE_EXACT_DATES = "Compare Exact Dates"
+FIND_CHEAPEST_HOLIDAY = "Find the Cheapest Holiday"
+SEARCH_PRESETS = [COMPARE_EXACT_DATES, FIND_CHEAPEST_HOLIDAY]
 CACHE_MODE_OPTIONS = list(CACHE_MODES.keys())
 SEAT_OPTIONS = ["Any", "2+", "4+", "5+", "7+", "9+"]
 VEHICLE_TYPES = ["Any", "Mini", "Economy", "Compact", "Family", "SUV", "Van"]
 PROVIDERS = ["PlusCar", "AutoReisen", "Cicar", "Payless Car"]
-TIME_MODES = ["Exact Time", "Flexible Time"]
-TIME_FLEX_OPTIONS = ["+/- 30 minutes", "+/- 1 hour", "+/- 2 hours"]
+USE_CHOSEN_TIMES = "Use my chosen times"
+TRY_NEARBY_TIMES = "Try nearby times"
+TIME_MODES = [USE_CHOSEN_TIMES, TRY_NEARBY_TIMES]
+TIME_FLEX_OPTIONS = ["Up to 30 minutes either side", "Up to 1 hour either side", "Up to 2 hours either side"]
 TIME_FLEX_MINUTES = {TIME_FLEX_OPTIONS[0]: 30, TIME_FLEX_OPTIONS[1]: 60, TIME_FLEX_OPTIONS[2]: 120}
 
 COLORS = {
@@ -79,24 +83,24 @@ class CanaryCarFinderApp:
         self.return_date_display_var = ctk.StringVar(value=_display_date(self.return_date_var.get()))
         self.pickup_time_var = ctk.StringVar(value=self.user_settings.get("pickup_time", self.settings.pickup_time))
         self.return_time_var = ctk.StringVar(value=self.user_settings.get("return_time", self.settings.final_return_time))
-        self.time_mode_var = ctk.StringVar(value=self.user_settings.get("time_mode", TIME_MODES[0]))
-        self.time_flex_var = ctk.StringVar(value=self.user_settings.get("time_flex", TIME_FLEX_OPTIONS[1]))
+        self.time_mode_var = ctk.StringVar(value=_saved_time_mode(self.user_settings.get("time_mode")))
+        self.time_flex_var = ctk.StringVar(value=_saved_time_flex(self.user_settings.get("time_flex")))
         self.min_days_var = ctk.StringVar(value=str(self.user_settings.get("min_days", self.settings.min_days)))
         self.max_days_var = ctk.StringVar(value=str(self.user_settings.get("max_days", self.settings.max_days)))
         self.transmission_var = ctk.StringVar(value=self.user_settings.get("transmission", TRANSMISSIONS[0]))
         self.vehicle_seats_var = ctk.StringVar(value=self.user_settings.get("vehicle_seats", SEAT_OPTIONS[0]))
         self.vehicle_type_var = ctk.StringVar(value=self.user_settings.get("vehicle_type", VEHICLE_TYPES[0]))
         self.search_mode_var = ctk.StringVar(value=self._saved_preset())
-        self.cache_mode_var = ctk.StringVar(value=self.user_settings.get("cache_mode", CACHE_MODE_OPTIONS[1]))
+        self.cache_mode_var = ctk.StringVar(value=_saved_recent_price_choice(self.user_settings.get("cache_mode")))
         self.visible_browser_var = ctk.BooleanVar(
             value=bool(self.user_settings.get("visible_browser", self.settings.visible_browser))
         )
         self.status_var = ctk.StringVar(value="Ready for your next Canary trip")
         self.detail_var = ctk.StringVar(
-            value="Choose a single search or optimise every trip length in your holiday window."
+            value="Tell us when you could travel and we will compare trusted local car hire prices."
         )
-        self.count_var = ctk.StringVar(value="0 / 0")
-        self.fact_var = ctk.StringVar(value="Smart Memory will reuse recent searches when it can.")
+        self.count_var = ctk.StringVar(value="0 checked")
+        self.fact_var = ctk.StringVar(value="Recent results can be reused to save you time.")
         self.advanced_visible = False
         self.support_var = ctk.StringVar(
             value=(
@@ -175,14 +179,14 @@ class CanaryCarFinderApp:
         ).grid(row=1, column=1, sticky="w")
 
         self.preset_help_var = ctk.StringVar()
-        self._section_label(form, "Search mode", 1)
+        self._section_label(form, "What would you like to do?", 1)
         self._preset_radios(form, 2)
         self.preset_help_var.set("")
 
         self.date_help_var = ctk.StringVar()
         self.length_help_var = ctk.StringVar()
 
-        self._section_label(form, "Pickup location", 3)
+        self._section_label(form, "Where will you collect the car?", 3)
         ctk.CTkLabel(
             form,
             text="Fuerteventura Airport",
@@ -193,9 +197,9 @@ class CanaryCarFinderApp:
             font=ctk.CTkFont(size=15, weight="bold"),
         ).grid(row=4, column=0, padx=24, pady=(0, 10), sticky="ew")
 
-        self._section_label(form, "Holiday dates", 5)
+        self._section_label(form, "When could you travel?", 5)
         self._date_pair(form, 6)
-        self._section_label(form, "Trip length", 7)
+        self._section_label(form, "How many days away?", 7)
         self._entry_pair(form, 8)
         action_frame = ctk.CTkFrame(sidebar, fg_color=COLORS["panel"], corner_radius=0)
         action_frame.grid(row=1, column=0, padx=16, pady=(6, 8), sticky="ew")
@@ -203,7 +207,7 @@ class CanaryCarFinderApp:
 
         self.search_button = ctk.CTkButton(
             action_frame,
-            text="Search",
+            text="Find my car",
             height=52,
             corner_radius=12,
             fg_color=COLORS["sun"],
@@ -216,7 +220,7 @@ class CanaryCarFinderApp:
 
         self.advanced_button = ctk.CTkButton(
             action_frame,
-            text="Advanced Options",
+            text="More choices",
             height=38,
             fg_color="#edf6f7",
             hover_color=COLORS["sand"],
@@ -228,36 +232,36 @@ class CanaryCarFinderApp:
         self.advanced_frame = ctk.CTkFrame(form, fg_color="#f8fbfb", border_color=COLORS["line"], border_width=1, corner_radius=12)
         self.advanced_frame.grid(row=9, column=0, padx=24, pady=(0, 12), sticky="ew")
         self.advanced_frame.grid_columnconfigure(0, weight=1)
-        self._section_label(self.advanced_frame, "Flight times", 0)
-        self._time_selector(self.advanced_frame, "Pickup time", self.pickup_time_var, 1)
-        self._time_selector(self.advanced_frame, "Return time", self.return_time_var, 2)
+        self._section_label(self.advanced_frame, "Flight-friendly collection times", 0)
+        self._time_selector(self.advanced_frame, "Collect the car around", self.pickup_time_var, 1)
+        self._time_selector(self.advanced_frame, "Return the car around", self.return_time_var, 2)
         self._option(
             self.advanced_frame,
-            "Time optimisation",
+            "Collection time choice",
             self.time_mode_var,
             TIME_MODES,
             3,
             command=lambda _: self._refresh_time_mode(),
         )
-        self.time_flex_menu = self._option(self.advanced_frame, "Flexible window", self.time_flex_var, TIME_FLEX_OPTIONS, 4)
+        self.time_flex_menu = self._option(self.advanced_frame, "How flexible are your times?", self.time_flex_var, TIME_FLEX_OPTIONS, 4)
         ctk.CTkLabel(
             self.advanced_frame,
-            text="Flexible Time searches nearby flight-friendly collection and return times automatically.",
+            text="If your flight time is flexible, we can also check nearby collection and return times for cheaper prices.",
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=12),
             wraplength=270,
             justify="left",
         ).grid(row=10, column=0, padx=26, pady=(0, 12), sticky="w")
-        self._section_label(self.advanced_frame, "Vehicle preferences", 6)
+        self._section_label(self.advanced_frame, "Car preferences", 6)
         self._option(self.advanced_frame, "Transmission", self.transmission_var, TRANSMISSIONS, 7)
         self._option(self.advanced_frame, "Vehicle seats", self.vehicle_seats_var, SEAT_OPTIONS, 8)
         self._option(self.advanced_frame, "Vehicle type", self.vehicle_type_var, VEHICLE_TYPES, 9)
-        self._section_label(self.advanced_frame, "Memory and display", 19)
-        self._option(self.advanced_frame, "Smart Memory", self.cache_mode_var, CACHE_MODE_OPTIONS, 20)
+        self._section_label(self.advanced_frame, "Speed and display", 19)
+        self._option(self.advanced_frame, "Reuse recent results", self.cache_mode_var, CACHE_MODE_OPTIONS, 20)
 
         browser_toggle = ctk.CTkSwitch(
             self.advanced_frame,
-            text="Show provider browser while searching",
+            text="Show the provider websites while checking prices",
             variable=self.visible_browser_var,
             onvalue=True,
             offvalue=False,
@@ -288,7 +292,7 @@ class CanaryCarFinderApp:
 
         ctk.CTkLabel(
             status,
-            text="Current Activity",
+            text="What is happening now",
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=13, weight="bold"),
         ).grid(row=0, column=0, padx=26, pady=(24, 4), sticky="w")
@@ -341,7 +345,7 @@ class CanaryCarFinderApp:
 
         ctk.CTkLabel(
             support,
-            text="Enjoyed the optimiser?",
+            text="Enjoyed using it?",
             text_color=COLORS["ink"],
             font=ctk.CTkFont(size=16, weight="bold"),
         ).grid(row=0, column=0, padx=16, pady=(12, 6), sticky="w")
@@ -416,9 +420,16 @@ class CanaryCarFinderApp:
         frame = ctk.CTkFrame(parent, fg_color="transparent")
         frame.grid(row=row, column=0, padx=24, pady=(0, 8), sticky="ew")
         frame.grid_columnconfigure(0, weight=1)
+        subtitles = {
+            COMPARE_EXACT_DATES: "Compare prices for one specific holiday.",
+            FIND_CHEAPEST_HOLIDAY: "Search multiple dates and times to find the cheapest option.",
+        }
         for index, value in enumerate(SEARCH_PRESETS):
+            option = ctk.CTkFrame(frame, fg_color="#f8fbfb", border_color=COLORS["line"], border_width=1, corner_radius=10)
+            option.grid(row=index, column=0, padx=0, pady=3, sticky="ew")
+            option.grid_columnconfigure(0, weight=1)
             radio = ctk.CTkRadioButton(
-                frame,
+                option,
                 text=value,
                 value=value,
                 variable=self.search_mode_var,
@@ -430,7 +441,16 @@ class CanaryCarFinderApp:
                 font=ctk.CTkFont(size=15, weight="bold"),
                 text_color=COLORS["ink"],
             )
-            radio.grid(row=index, column=0, padx=4, pady=3, sticky="w")
+            radio.grid(row=0, column=0, padx=12, pady=(7, 1), sticky="w")
+            ctk.CTkLabel(
+                option,
+                text=subtitles[value],
+                text_color=COLORS["muted"],
+                font=ctk.CTkFont(size=12),
+                wraplength=230,
+                justify="left",
+                anchor="w",
+            ).grid(row=1, column=0, padx=(42, 10), pady=(0, 7), sticky="ew")
 
     def _section_label(self, parent, label, row):
         ctk.CTkLabel(
@@ -462,7 +482,7 @@ class CanaryCarFinderApp:
         frame = ctk.CTkFrame(parent, fg_color="transparent")
         frame.grid(row=row, column=0, padx=24, pady=(0, 8), sticky="ew")
         frame.grid_columnconfigure((0, 1), weight=1, uniform="dates")
-        self._compact_date(frame, "Depart", self.pickup_date_var, self.pickup_date_display_var, 0)
+        self._compact_date(frame, "Collect", self.pickup_date_var, self.pickup_date_display_var, 0)
         self._compact_date(frame, "Return", self.return_date_var, self.return_date_display_var, 1)
 
     def _compact_date(self, parent, label, iso_variable, display_variable, column):
@@ -490,8 +510,8 @@ class CanaryCarFinderApp:
         frame = ctk.CTkFrame(parent, fg_color="transparent")
         frame.grid(row=row, column=0, padx=24, pady=(0, 8), sticky="ew")
         frame.grid_columnconfigure((0, 1), weight=1, uniform="length")
-        self._compact_entry(frame, "Minimum", self.min_days_var, 0)
-        self._compact_entry(frame, "Maximum", self.max_days_var, 1)
+        self._compact_entry(frame, "Shortest", self.min_days_var, 0)
+        self._compact_entry(frame, "Longest", self.max_days_var, 1)
 
     def _compact_entry(self, parent, label, variable, column):
         ctk.CTkLabel(
@@ -623,12 +643,12 @@ class CanaryCarFinderApp:
 
         self._save_user_settings()
         self.search_running = True
-        self.search_button.configure(state="disabled", text="Searching...")
+        self.search_button.configure(state="disabled", text="Checking prices...")
         self.log.configure(state="normal")
         self.log.delete("1.0", "end")
         self.log.configure(state="disabled")
-        self.support_var.set("Search running. I will show the saving once prices are compared.")
-        self._set_status("Starting search", "Preparing provider searches", 0, 0)
+        self.support_var.set("Checking prices now. I will show the saving once everything is compared.")
+        self._set_status("Getting ready", "Preparing to check the provider websites", 0, 0)
 
         self.worker = threading.Thread(target=self._run_search, args=(search_settings, mode), daemon=True)
         self.worker.start()
@@ -645,7 +665,7 @@ class CanaryCarFinderApp:
 
         total_days = (dropoff - pickup).days
         preset = self.search_mode_var.get()
-        mode = "single" if preset == "Quick Search" else "full"
+        mode = "single" if preset == COMPARE_EXACT_DATES else "full"
         if mode == "single":
             min_days = total_days
             max_days = total_days
@@ -654,13 +674,13 @@ class CanaryCarFinderApp:
                 min_days = int(self.min_days_var.get().strip())
                 max_days = int(self.max_days_var.get().strip())
             except ValueError as exc:
-                raise ValueError("Trip lengths must be whole numbers.") from exc
+                raise ValueError("Enter whole numbers for the shortest and longest holiday.") from exc
             if min_days < 1:
-                raise ValueError("Minimum trip length must be at least 1 day.")
+                raise ValueError("The shortest holiday must be at least 1 day.")
             if max_days < min_days:
-                raise ValueError("Maximum trip length must be greater than or equal to the minimum.")
+                raise ValueError("The longest holiday must be the same as, or longer than, the shortest holiday.")
             if max_days > total_days:
-                raise ValueError("Maximum trip length cannot exceed the full date window.")
+                raise ValueError("The longest holiday cannot be longer than the dates you selected.")
 
         search_settings = replace(
             self.settings,
@@ -703,7 +723,7 @@ class CanaryCarFinderApp:
                 kind = event[0]
                 if kind == "progress":
                     _, completed, total, message, summary = event
-                    self._set_status("Searching providers", self._progress_detail(message, summary), completed, total)
+                    self._set_status("Checking prices", self._progress_detail(message, summary), completed, total)
                     self._append_log(f"[{completed}/{total}] {message}")
                 elif kind == "done":
                     _, rows, reports = event
@@ -728,26 +748,26 @@ class CanaryCarFinderApp:
     def _finish_search(self, rows, reports):
         _, _, html_path = reports
         total = len(rows)
-        self._set_status("Search complete", f"Report ready: {html_path.resolve()}", total, total)
-        self._append_log(f"Completed {total} provider searches.")
+        self._set_status("Your results are ready", f"Opening your report: {html_path.resolve()}", total, total)
+        self._append_log(f"Checked {total} prices.")
         self._update_support_message(rows)
         self.search_running = False
-        self.search_button.configure(state="normal", text="Search")
+        self.search_button.configure(state="normal", text="Find my car")
         webbrowser.open(html_path.resolve().as_uri())
 
     def _fail_search(self, exc):
-        self._set_status("Search failed", str(exc), 0, 0)
-        self._append_log(f"Search failed: {exc}")
+        self._set_status("Something went wrong", str(exc), 0, 0)
+        self._append_log(f"Could not finish checking prices: {exc}")
         self.support_var.set(
             "No adverts, subscriptions or affiliate links. If it helped, buying Jamie an Estrella is appreciated."
         )
         self.search_running = False
-        self.search_button.configure(state="normal", text="Search")
+        self.search_button.configure(state="normal", text="Find my car")
 
     def _set_status(self, title, detail, completed, total):
         self.status_var.set(title)
         self.detail_var.set(detail)
-        self.count_var.set(f"{completed} / {total}")
+        self.count_var.set(f"{completed} of {total} checked" if total else "0 checked")
         self.progress_bar.set(completed / total if total else 0)
 
     def _append_log(self, message):
@@ -845,8 +865,10 @@ class CanaryCarFinderApp:
 
     def _saved_preset(self):
         saved = self.user_settings.get("search_mode", SEARCH_PRESETS[0])
-        if saved == "Single Search":
-            return "Quick Search"
+        if saved in {"Single Search", "Quick Search", COMPARE_EXACT_DATES}:
+            return COMPARE_EXACT_DATES
+        if saved in {"Holiday Optimiser", "Deep Search", FIND_CHEAPEST_HOLIDAY}:
+            return FIND_CHEAPEST_HOLIDAY
         if saved in SEARCH_PRESETS:
             return saved
         return SEARCH_PRESETS[0]
@@ -873,45 +895,40 @@ class CanaryCarFinderApp:
 
     def _apply_preset(self):
         preset = self.search_mode_var.get()
-        if preset == "Quick Search":
-            self.preset_help_var.set("Fast and simple: checks your exact dates using Smart Memory.")
-            self.date_help_var.set("Quick Search uses these as your exact pickup and return dates.")
-            self.length_help_var.set("Trip length is worked out automatically for Quick Search.")
-            self.cache_mode_var.set("Smart Search")
-            self.time_mode_var.set("Exact Time")
-        elif preset == "Deep Search":
-            self.preset_help_var.set("Most thorough: checks flexible dates and several pickup and return times.")
-            self.date_help_var.set("Deep Search checks every valid holiday inside this date window.")
-            self.length_help_var.set("Every trip length between these limits is searched.")
-            self.cache_mode_var.set("Smart Search")
-            self.time_mode_var.set("Flexible Time")
-            self.time_flex_var.set("+/- 2 hours")
+        if preset == COMPARE_EXACT_DATES:
+            self.preset_help_var.set("Compare prices for one specific holiday.")
+            self.date_help_var.set("Use these as your collection and return dates.")
+            self.length_help_var.set("We work out the number of hire days from your dates.")
+            self.cache_mode_var.set("Reuse prices from today")
+            self.time_mode_var.set(USE_CHOSEN_TIMES)
         else:
-            self.preset_help_var.set("Best balance: checks flexible dates to find cheaper holiday options.")
-            self.date_help_var.set("Holiday Optimiser checks every valid trip inside this date window.")
-            self.length_help_var.set("Every trip length between these limits is searched across all providers.")
-            self.cache_mode_var.set("Smart Search")
-            self.time_mode_var.set("Exact Time")
+            self.preset_help_var.set(
+                "Search multiple dates, holiday lengths and collection times to automatically find the cheapest option."
+            )
+            self.date_help_var.set("Choose the earliest date you could leave and the latest date you could return.")
+            self.length_help_var.set("We will try holidays between these shortest and longest stays.")
+            self.cache_mode_var.set("Reuse prices from today")
+            self.time_mode_var.set(TRY_NEARBY_TIMES)
         self._refresh_time_mode()
 
     def _toggle_advanced(self):
         self.advanced_visible = not self.advanced_visible
         if self.advanced_visible:
             self.advanced_frame.grid()
-            self.advanced_button.configure(text="Hide Advanced Options")
+            self.advanced_button.configure(text="Hide more choices")
         else:
             self.advanced_frame.grid_remove()
-            self.advanced_button.configure(text="Advanced Options")
+            self.advanced_button.configure(text="More choices")
 
     def _refresh_time_mode(self):
         if hasattr(self, "time_flex_menu"):
-            state = "normal" if self.time_mode_var.get() == "Flexible Time" else "disabled"
+            state = "normal" if self.time_mode_var.get() == TRY_NEARBY_TIMES else "disabled"
             self.time_flex_menu.configure(state=state)
 
     def _generated_times(self, centre):
         if centre not in TIME_OPTIONS:
             raise ValueError("Choose pickup and return times from the list.")
-        if self.time_mode_var.get() != "Flexible Time":
+        if self.time_mode_var.get() != TRY_NEARBY_TIMES:
             return [centre]
         radius = TIME_FLEX_MINUTES.get(self.time_flex_var.get(), 60)
         centre_minutes = _time_to_minutes(centre)
@@ -923,15 +940,15 @@ class CanaryCarFinderApp:
 
     def _confirm_search(self, estimate):
         message = (
-            "Canary Car Finder is ready to start.\n\n"
-            f"{estimate.get('date_combinations_generated', 0)} holiday combinations\n"
-            f"{estimate.get('time_combinations_generated', 0)} time combinations\n"
-            f"{estimate.get('provider_searches_estimated', 0)} provider searches\n\n"
-            f"Smart Memory: {estimate.get('cache_mode', 'Live Search')}\n"
-            f"Estimated runtime: {estimate.get('estimated_duration_text', 'Unknown')}\n\n"
+            "Canary Car Finder is ready to check prices.\n\n"
+            f"{estimate.get('date_combinations_generated', 0)} date choices\n"
+            f"{estimate.get('time_combinations_generated', 0)} collection and return time choices\n"
+            f"{estimate.get('provider_searches_estimated', 0)} prices to check\n\n"
+            f"Recent results: {estimate.get('cache_mode', 'Always check fresh prices')}\n"
+            f"Estimated time: {estimate.get('estimated_duration_text', 'Unknown')}\n\n"
             "Continue?"
         )
-        return messagebox.askokcancel("Confirm Search", message, parent=self.root)
+        return messagebox.askokcancel("Start checking prices?", message, parent=self.root)
 
     def _progress_detail(self, message, summary):
         if not summary:
@@ -940,16 +957,15 @@ class CanaryCarFinderApp:
         self.fact_var.set(_search_fact(summary))
         return (
             f"{message}\n"
-            f"Cache hits: {summary.get('cache_hits', 0)} / Live: {summary.get('live_searches', 0)} / "
-            f"Remaining: {remaining}\n"
-            f"Elapsed: {_duration_text(summary.get('elapsed_seconds'))} / "
-            f"Est. remaining: {_duration_text(summary.get('estimated_remaining_seconds'))} / "
-            f"Cache hit rate: {summary.get('cache_hit_rate', 0)}%"
+            f"Reused recent results: {summary.get('cache_hits', 0)} / Checked live: {summary.get('live_searches', 0)} / "
+            f"Still to check: {remaining}\n"
+            f"Time so far: {_duration_text(summary.get('elapsed_seconds'))} / "
+            f"About {_duration_text(summary.get('estimated_remaining_seconds'))} left"
         )
 
     def _show_help(self):
         dialog = ctk.CTkToplevel(self.root)
-        dialog.title("How Searches Work")
+        dialog.title("How Canary Car Finder Helps")
         dialog.geometry("620x560")
         dialog.configure(fg_color=COLORS["sky"])
         dialog.transient(self.root)
@@ -961,16 +977,15 @@ class CanaryCarFinderApp:
 
         ctk.CTkLabel(
             panel,
-            text="Why Searches Take Time",
+            text="Why checking prices can take a little while",
             text_color=COLORS["ink"],
             font=ctk.CTkFont(size=26, weight="bold"),
         ).grid(row=0, column=0, padx=22, pady=(22, 12), sticky="w")
         help_text = (
             "Canary Car Finder checks PlusCar, AutoReisen, Cicar and Payless Car because they are trusted local companies.\n\n"
-            "Flexible dates can save money because moving your trip by a day or two can change the price. "
-            "The Holiday Optimiser tries those options for you.\n\n"
-            "Deep Search also tries different pickup and return times. That can find better prices, but it creates more searches.\n\n"
-            "Smart Memory makes repeat searches faster by reusing recent results. Live prices still come directly from the provider websites, so booking links stay useful."
+            "If your dates are fixed, choose Compare Exact Dates and we will check that one holiday.\n\n"
+            "If your plans are flexible, choose Find the Cheapest Holiday. Moving your holiday by a day or two, or collecting the car slightly earlier or later, can sometimes save money.\n\n"
+            "Recent results can make repeat checks faster. Prices still come from the provider websites, so you can continue there when you are ready to book."
         )
         ctk.CTkLabel(
             panel,
@@ -986,6 +1001,30 @@ class CanaryCarFinderApp:
 
 def _display_date(value):
     return date.fromisoformat(str(value)).strftime("%d/%m/%Y")
+
+
+def _saved_time_mode(value):
+    if value in {"Flexible Time", TRY_NEARBY_TIMES}:
+        return TRY_NEARBY_TIMES
+    return USE_CHOSEN_TIMES
+
+
+def _saved_time_flex(value):
+    legacy = {
+        "+/- 30 minutes": TIME_FLEX_OPTIONS[0],
+        "+/- 1 hour": TIME_FLEX_OPTIONS[1],
+        "+/- 2 hours": TIME_FLEX_OPTIONS[2],
+    }
+    return legacy.get(value, value if value in TIME_FLEX_OPTIONS else TIME_FLEX_OPTIONS[1])
+
+
+def _saved_recent_price_choice(value):
+    legacy = {
+        "Live Search": "Always check fresh prices",
+        "Smart Search": "Reuse prices from today",
+        "Fast Search": "Reuse prices from this week",
+    }
+    return legacy.get(value, value if value in CACHE_MODE_OPTIONS else CACHE_MODE_OPTIONS[1])
 
 
 def _time_to_minutes(value):
@@ -1011,7 +1050,7 @@ def _search_fact(summary):
     cache_hits = summary.get("cache_hits", 0)
     live = summary.get("live_searches", 0)
     if cache_hits and cache_hits >= live:
-        return "Using Smart Memory to skip searches you have already run."
+        return "Reusing recent prices so you do not wait for the same checks again."
     if provider and provider != "N/A":
         return f"Checking {provider} for the best confirmed price."
     if total:

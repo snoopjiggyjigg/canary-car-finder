@@ -7,9 +7,14 @@ from pathlib import Path
 
 CACHE_PATH = Path("cache/search_cache.json")
 CACHE_MODES = {
-    "Live Search": 0,
-    "Smart Search": 24,
-    "Fast Search": 24 * 7,
+    "Always check fresh prices": 0,
+    "Reuse prices from today": 24,
+    "Reuse prices from this week": 24 * 7,
+}
+LEGACY_CACHE_MODES = {
+    "Live Search": "Always check fresh prices",
+    "Smart Search": "Reuse prices from today",
+    "Fast Search": "Reuse prices from this week",
 }
 
 
@@ -76,11 +81,15 @@ def cache_key(provider_name, request, settings):
 
 
 def cache_lifetime_hours(settings):
-    return CACHE_MODES.get(getattr(settings, "cache_mode", "Live Search"), 0)
+    return CACHE_MODES.get(_cache_mode(getattr(settings, "cache_mode", "Always check fresh prices")), 0)
 
 
 def cache_mode_label(settings):
-    return getattr(settings, "cache_mode", "Live Search")
+    return _cache_mode(getattr(settings, "cache_mode", "Always check fresh prices"))
+
+
+def _cache_mode(value):
+    return LEGACY_CACHE_MODES.get(value, value)
 
 
 def _is_fresh(timestamp, max_age_hours):

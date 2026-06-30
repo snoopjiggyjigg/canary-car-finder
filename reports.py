@@ -192,7 +192,7 @@ def _render_html(df, progress):
             <div class='mark'>CC</div>
             <div>
               <h1>Canary Car Finder</h1>
-              <p class='subtitle'>Live rental search results, sorted by the best confirmed price.</p>
+              <p class='subtitle'>Clear recommendations from four trusted Canary Islands car hire companies.</p>
             </div>
           </div>
           {_status_pill(progress)}
@@ -206,15 +206,15 @@ def _render_html(df, progress):
         {_price_calendar_html(df)}
         {_search_statistics_html(df)}
         <div class='section-title'>
-          <h2>Complete Search Results</h2>
-          <span class='subtitle'>{len(df)} searches recorded</span>
+          <h2>More Cars To Compare</h2>
+          <span class='subtitle'>{len(df)} prices checked</span>
         </div>
         <section class='cards'>
           {_cards_html(df)}
         </section>
         <div class='section-title'>
-          <h2>All Results</h2>
-          <span class='subtitle'>CSV and Excel exports use this same source data.</span>
+          <h2>Full Price List</h2>
+          <span class='subtitle'>Useful if you want to check every price found.</span>
         </div>
         <div class='table-wrap'>
           {_table_html(df)}
@@ -256,15 +256,14 @@ def _progress_html(progress):
             <div class='progress-title'>{percent}% complete</div>
             <div class='progress-copy'>{message}</div>
             <div class='progress-copy'>
-              Current provider: {escape(str(summary.get("current_provider", "N/A")))} /
-              Holiday: {escape(str(summary.get("current_holiday", "N/A")))} /
-              Time: {escape(str(summary.get("current_time_combination", "N/A")))}
+              Checking: {escape(str(summary.get("current_provider", "N/A")))} /
+              Dates: {escape(str(summary.get("current_holiday", "N/A")))} /
+              Times: {escape(str(summary.get("current_time_combination", "N/A")))}
             </div>
             <div class='progress-copy'>
-              Cache hits: {summary.get("cache_hits", 0)} /
-              Live searches: {summary.get("live_searches", 0)} /
-              Remaining: {max(int(summary.get("total_provider_searches", total) or 0) - int(summary.get("provider_searches_completed", completed) or 0), 0)} /
-              Hit rate: {summary.get("cache_hit_rate", 0)}%
+              Reused recent results: {summary.get("cache_hits", 0)} /
+              Checked live: {summary.get("live_searches", 0)} /
+              Still to check: {max(int(summary.get("total_provider_searches", total) or 0) - int(summary.get("provider_searches_completed", completed) or 0), 0)}
             </div>
           </div>
           <strong>{completed} / {total}</strong>
@@ -285,16 +284,16 @@ def _stats_html(df):
     failed = len(df) - len(successful)
     return f"""
       <section class='stats'>
-        {_live_stat("Best Overall Holiday", _result_label(best), "stat-best-holiday")}
+        {_live_stat("Best Overall Choice", _result_label(best), "stat-best-holiday")}
         {_live_stat("Best Provider", best_provider, "stat-best-provider")}
         {_live_stat("Cheapest Automatic", _format_euro(cheapest_auto), "stat-cheapest-auto")}
         {_live_stat("Cheapest Manual", _format_euro(cheapest_manual), "stat-cheapest-manual")}
         {_live_stat("Average Price", _format_euro(successful["price"].mean() if not successful.empty else None), "stat-average-price")}
         {_live_stat("Highest Price", _format_euro(successful["price"].max() if not successful.empty else None), "stat-highest-price")}
         {_live_stat("Lowest Price", _format_euro(successful["price"].min() if not successful.empty else None), "stat-lowest-price")}
-        {_stat("Combinations Tested", str(combinations))}
-        {_live_stat("Successful Searches", str(len(successful)), "stat-successful-searches")}
-        {_live_stat("Failed Searches", str(failed), "stat-failed-searches")}
+        {_stat("Date Choices Checked", str(combinations))}
+        {_live_stat("Prices Found", str(len(successful)), "stat-successful-searches")}
+        {_live_stat("Checks Without A Price", str(failed), "stat-failed-searches")}
       </section>
     """
 
@@ -326,23 +325,23 @@ def _filter_bar_html(df):
     return f"""
       <section class='filters' aria-label='Filter results'>
         <div class='section-title' style='margin-top:0'>
-          <h2>Filter Results</h2>
-          <span class='subtitle'>Instantly refine this report without running another search.</span>
+          <h2>Narrow Down The Results</h2>
+          <span class='subtitle'>Choose what matters to you. No need to search again.</span>
         </div>
         <div class='filter-grid'>
-          {_select_filter("Trip Length", "filter-trip", trip_lengths)}
+          {_select_filter("Holiday Length", "filter-trip", trip_lengths)}
           {_select_filter("Seats", "filter-seats", seats)}
           {_select_filter("Transmission", "filter-transmission", transmissions)}
           {_select_filter("Vehicle Type", "filter-type", vehicle_types)}
           {_select_filter("Provider", "filter-provider", providers)}
           <div class='filter-field'>
-            <label>Price Range</label>
+            <label>Price</label>
             <div class='price-range'>
               <input id='filter-min-price' type='number' min='0' step='0.01' placeholder='Min' value='{f"{float(low):.2f}" if not pd.isna(low) else ""}'>
               <input id='filter-max-price' type='number' min='0' step='0.01' placeholder='Max' value='{f"{float(high):.2f}" if not pd.isna(high) else ""}'>
             </div>
           </div>
-          {_select_filter("Sort Order", "filter-sort", [
+          {_select_filter("Show First", "filter-sort", [
               ("price-asc", "Cheapest first"),
               ("daily-asc", "Lowest daily price"),
               ("trip-asc", "Shortest trip"),
@@ -352,7 +351,7 @@ def _filter_bar_html(df):
         </div>
         <label class='filter-toggle'>
           <input id='filter-cheapest-holiday' type='checkbox'>
-          <span>Show only the cheapest option for each holiday.</span>
+          <span>Show only the cheapest car for each set of dates.</span>
         </label>
         <div class='live-summary'>
           <div><span>Matching results</span><strong id='live-count'>0</strong></div>
@@ -405,29 +404,28 @@ def _holiday_summary_html(df, progress):
     cheapest = successful["price"].min() if not successful.empty else None
     saving = float(average - cheapest) if average and cheapest else None
     return f"""
-      <div class='section-title'><h2>Holiday Summary</h2><span class='subtitle'>Search scope and outcome</span></div>
+      <div class='section-title'><h2>Your Search</h2><span class='subtitle'>The dates and times checked for you</span></div>
       <section class='stats'>
-        {_stat("Holiday Window", escape(str(summary.get("holiday_window", "N/A"))))}
-        {_stat("Trip Length Range", escape(str(summary.get("trip_length_range", "N/A"))))}
-        {_stat("Pickup Time Options", escape(str(summary.get("pickup_time_options", "N/A"))))}
-        {_stat("Return Time Options", escape(str(summary.get("return_time_options", "N/A"))))}
-        {_stat("Date Combinations", str(summary.get("date_combinations_generated", 0)))}
-        {_stat("Time Combinations", str(summary.get("time_combinations_generated", 0)))}
-        {_stat("Total Combinations", str(summary.get("total_combinations_generated", 0)))}
-        {_stat("Duplicates Removed", str(summary.get("duplicate_searches_removed", 0)))}
-        {_stat("Provider Searches", str(summary.get("provider_searches_completed", 0)))}
-        {_stat("Cache Mode", escape(str(summary.get("cache_mode", "Live Search"))))}
-        {_stat("Cache Hits", str(summary.get("cache_hits", 0)))}
-        {_stat("Live Searches", str(summary.get("live_searches", 0)))}
-        {_stat("Browser Sessions", str(summary.get("browser_sessions_opened", 0)))}
+        {_stat("Dates Checked", escape(str(summary.get("holiday_window", "N/A"))))}
+        {_stat("Holiday Lengths", escape(str(summary.get("trip_length_range", "N/A"))))}
+        {_stat("Collection Times", escape(str(summary.get("pickup_time_options", "N/A"))))}
+        {_stat("Return Times", escape(str(summary.get("return_time_options", "N/A"))))}
+        {_stat("Date Choices", str(summary.get("date_combinations_generated", 0)))}
+        {_stat("Time Choices", str(summary.get("time_combinations_generated", 0)))}
+        {_stat("Prices Considered", str(summary.get("total_combinations_generated", 0)))}
+        {_stat("Repeated Checks Skipped", str(summary.get("duplicate_searches_removed", 0)))}
+        {_stat("Prices Checked", str(summary.get("provider_searches_completed", 0)))}
+        {_stat("Recent Results Used", str(summary.get("cache_hits", 0)))}
+        {_stat("Fresh Prices Checked", str(summary.get("live_searches", 0)))}
+        {_stat("Provider Visits", str(summary.get("browser_sessions_opened", 0)))}
         {_stat("Estimated Time Saved", _duration(summary.get("estimated_time_saved_seconds")))}
-        {_stat("Successful Searches", str(len(successful)))}
-        {_stat("Failed Searches", str(failed))}
-        {_stat("Search Duration", _duration(summary.get("search_duration_seconds")))}
+        {_stat("Prices Found", str(len(successful)))}
+        {_stat("Checks Without A Price", str(failed))}
+        {_stat("Time Taken", _duration(summary.get("search_duration_seconds")))}
         {_stat("Best Provider", _best_provider(successful))}
-        {_stat("Cheapest Holiday", _result_label(successful.iloc[0] if not successful.empty else None))}
+        {_stat("Cheapest Choice", _result_label(successful.iloc[0] if not successful.empty else None))}
         {_stat("Average Price", _format_euro(average))}
-        {_stat("Potential Saving Vs Average", _format_euro(saving))}
+        {_stat("Saving Compared With Average", _format_euro(saving))}
       </section>
     """
 
@@ -436,8 +434,8 @@ def _best_holidays_html(df):
     successful = _successful(df).head(20)
     if successful.empty:
         return """
-          <div class='section-title'><h2>Top 20 Best Holidays</h2><span class='subtitle'>Awaiting successful prices</span></div>
-          <div class='best-table'><table><tbody><tr><td>No ranked holidays yet.</td></tr></tbody></table></div>
+          <div class='section-title'><h2>20 Cheapest Options</h2><span class='subtitle'>Waiting for prices</span></div>
+          <div class='best-table'><table><tbody><tr><td>No prices found yet.</td></tr></tbody></table></div>
         """
 
     rows = []
@@ -465,10 +463,10 @@ def _best_holidays_html(df):
             """
         )
     return f"""
-      <div class='section-title'><h2>Top 20 Best Holidays</h2><span class='subtitle'>Ranked by total price, daily price, then provider preference</span></div>
+      <div class='section-title'><h2>20 Cheapest Options</h2><span class='subtitle'>The lowest prices found for your holiday choices</span></div>
       <div class='best-table'>
         <table>
-          <thead><tr><th>Rank</th><th>Provider</th><th>Source</th><th>Vehicle</th><th>Departure</th><th>Return</th><th>Trip</th><th>Pickup</th><th>Return time</th><th>Total</th><th>Daily</th><th>Saves vs next</th><th>Book</th></tr></thead>
+          <thead><tr><th>Rank</th><th>Company</th><th>Checked</th><th>Car</th><th>Collect</th><th>Return</th><th>Days</th><th>Collection time</th><th>Return time</th><th>Total</th><th>Per day</th><th>Saves vs next</th><th>Continue</th></tr></thead>
           <tbody id='best-holidays-body'>{"".join(rows)}</tbody>
         </table>
       </div>
@@ -493,7 +491,7 @@ def _price_calendar_html(df):
             f"<a class='{band}' href='#depart-{_date_id(pickup)}'><div class='cal-date'>{_date_text(pickup)}</div><div class='cal-price'>{_format_euro(row.get('price'))}</div></a>"
         )
     return f"""
-      <div class='section-title'><h2>Price Calendar</h2><span class='subtitle'>Cheapest result found by departure date</span></div>
+      <div class='section-title'><h2>Cheapest Dates</h2><span class='subtitle'>Lowest price found for each collection date</span></div>
       <section class='calendar'>{"".join(cells)}</section>
     """
 
@@ -508,14 +506,14 @@ def _search_statistics_html(df):
     cheapest_depart = _cheapest_departure(successful)
     cheapest_length = _cheapest_trip_length(successful)
     return f"""
-      <div class='section-title'><h2>Search Statistics</h2><span class='subtitle'>Calculated from completed results</span></div>
+      <div class='section-title'><h2>What We Found</h2><span class='subtitle'>A quick summary of the prices</span></div>
       <section class='stats'>
-        {_live_stat("Total Searches Performed", str(len(df)), "stat-total-searches")}
-        {_live_stat("Average Provider Price", _format_euro(successful["price"].mean() if not successful.empty else None), "stat-average-provider-price")}
-        {_live_stat("Cheapest Provider Overall", _best_provider(successful), "stat-cheapest-provider-overall")}
-        {_stat("Provider Win Count", win_text)}
-        {_live_stat("Cheapest Day To Depart", cheapest_depart, "stat-cheapest-departure")}
-        {_live_stat("Cheapest Trip Length", cheapest_length, "stat-cheapest-trip-length")}
+        {_live_stat("Prices Checked", str(len(df)), "stat-total-searches")}
+        {_live_stat("Average Price", _format_euro(successful["price"].mean() if not successful.empty else None), "stat-average-provider-price")}
+        {_live_stat("Best Value Company", _best_provider(successful), "stat-cheapest-provider-overall")}
+        {_stat("Times Each Company Was Cheapest", win_text)}
+        {_live_stat("Cheapest Collection Date", cheapest_depart, "stat-cheapest-departure")}
+        {_live_stat("Cheapest Holiday Length", cheapest_length, "stat-cheapest-trip-length")}
       </section>
     """
 
@@ -617,7 +615,8 @@ def _logo_html(src, provider):
 def _source_badge(row):
     source = _text(row.get("_result_source"), "LIVE").upper()
     badge_class = "cache" if source == "CACHE" else "live"
-    return f"<span class='source {badge_class}'>{escape(source)}</span>"
+    label = "Recent result" if source == "CACHE" else "Fresh price"
+    return f"<span class='source {badge_class}'>{escape(label)}</span>"
 
 
 def _comparison(price, cheapest, next_cheapest, success):
@@ -766,14 +765,14 @@ def _final_search_summary_html(df, progress):
     manual_saved = summary.get("estimated_time_saved_seconds")
     provider_count = summary.get("provider_count", 4)
     return f"""
-      <div class='section-title'><h2>Search Summary</h2><span class='subtitle'>What Canary Car Finder checked for you</span></div>
+      <div class='section-title'><h2>What We Checked For You</h2><span class='subtitle'>A plain-English summary of the work done</span></div>
       <section class='stats'>
-        {_stat("Holiday Combinations", str(summary.get("date_combinations_generated", 0)))}
-        {_stat("Time Combinations", str(summary.get("time_combinations_generated", 0)))}
-        {_stat("Duplicates Removed", str(summary.get("duplicate_searches_removed", 0)))}
-        {_stat("Provider Searches", str(summary.get("total_provider_searches", completed)))}
-        {_stat("Browser Sessions", str(summary.get("browser_sessions_opened", 0)))}
-        {_stat("Cache Hits", str(summary.get("cache_hits", 0)))}
+        {_stat("Date Choices", str(summary.get("date_combinations_generated", 0)))}
+        {_stat("Time Choices", str(summary.get("time_combinations_generated", 0)))}
+        {_stat("Repeated Checks Skipped", str(summary.get("duplicate_searches_removed", 0)))}
+        {_stat("Prices Checked", str(summary.get("total_provider_searches", completed)))}
+        {_stat("Provider Websites Visited", str(summary.get("browser_sessions_opened", 0)))}
+        {_stat("Recent Results Reused", str(summary.get("cache_hits", 0)))}
         {_stat("Time Taken", _duration(duration))}
         {_stat("Average Search Speed", f"{speed:.1f}s per price" if speed else "N/A")}
         {_stat("Estimated Manual Time Saved", _duration(manual_saved))}
@@ -797,7 +796,7 @@ def _support_html(df, app_config):
     return f"""
       <section class='support'>
         <div>
-          <h2>🍺 Enjoyed using Canary Car Hire Optimiser?</h2>
+          <h2>🍺 Enjoyed using Canary Car Finder?</h2>
           <p>This app has:</p>
           <p>No adverts<br>No subscriptions<br>No affiliate links</p>
           <p>If it helped you save money on your holiday and you would like to support future improvements, buying me an Estrella is always appreciated.</p>
@@ -1080,7 +1079,7 @@ def _filter_script(df):
             return `<tr data-best-key="${{row.key}}">
               <td>${{index + 1}}</td>
               <td>${{escapeHtml(row.provider)}}</td>
-              <td><span class="source ${{row.source === 'CACHE' ? 'cache' : 'live'}}">${{escapeHtml(row.source)}}</span></td>
+              <td><span class="source ${{row.source === 'CACHE' ? 'cache' : 'live'}}">${{row.source === 'CACHE' ? 'Recent result' : 'Fresh price'}}</span></td>
               <td>${{escapeHtml(row.vehicle)}}</td>
               <td>${{row.pickupDisplay}}</td>
               <td>${{row.dropoffDisplay}}</td>
