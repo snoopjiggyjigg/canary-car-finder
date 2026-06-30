@@ -37,11 +37,9 @@ CACHE_MODE_OPTIONS = list(CACHE_MODES.keys())
 SEAT_OPTIONS = ["Any", "2+", "4+", "5+", "7+", "9+"]
 VEHICLE_TYPES = ["Any", "Mini", "Economy", "Compact", "Family", "SUV", "Van"]
 PROVIDERS = ["PlusCar", "AutoReisen", "Cicar", "Payless Car"]
-USE_CHOSEN_TIMES = "Use my chosen times"
-TRY_NEARBY_TIMES = "Try nearby times"
+USE_CHOSEN_TIMES = "Use exact times"
+TRY_NEARBY_TIMES = "Use time windows"
 TIME_MODES = [USE_CHOSEN_TIMES, TRY_NEARBY_TIMES]
-TIME_FLEX_OPTIONS = ["Up to 30 minutes either side", "Up to 1 hour either side", "Up to 2 hours either side"]
-TIME_FLEX_MINUTES = {TIME_FLEX_OPTIONS[0]: 30, TIME_FLEX_OPTIONS[1]: 60, TIME_FLEX_OPTIONS[2]: 120}
 
 COLORS = {
     "ocean": "#0b6f86",
@@ -65,6 +63,7 @@ class CanaryCarFinderApp:
         self.events = queue.Queue()
         self.worker = None
         self.search_running = False
+        self.initializing = True
         self.stop_requested = threading.Event()
         self.pause_requested = threading.Event()
         self.after_id = None
@@ -90,8 +89,13 @@ class CanaryCarFinderApp:
         self.return_date_display_var = ctk.StringVar(value=_display_date(self.return_date_var.get()))
         self.pickup_time_var = ctk.StringVar(value=self.user_settings.get("pickup_time", self.settings.pickup_time))
         self.return_time_var = ctk.StringVar(value=self.user_settings.get("return_time", self.settings.final_return_time))
+        self.pickup_time_latest_var = ctk.StringVar(
+            value=self.user_settings.get("pickup_time_latest", self.user_settings.get("pickup_time", self.settings.pickup_time))
+        )
+        self.return_time_latest_var = ctk.StringVar(
+            value=self.user_settings.get("return_time_latest", self.user_settings.get("return_time", self.settings.final_return_time))
+        )
         self.time_mode_var = ctk.StringVar(value=_saved_time_mode(self.user_settings.get("time_mode")))
-        self.time_flex_var = ctk.StringVar(value=_saved_time_flex(self.user_settings.get("time_flex")))
         self.min_days_var = ctk.StringVar(value=str(self.user_settings.get("min_days", self.settings.min_days)))
         self.max_days_var = ctk.StringVar(value=str(self.user_settings.get("max_days", self.settings.max_days)))
         self.transmission_var = ctk.StringVar(value=self.user_settings.get("transmission", TRANSMISSIONS[0]))
@@ -124,6 +128,7 @@ class CanaryCarFinderApp:
         )
 
         self._build_layout()
+        self.initializing = False
         self.root.protocol("WM_DELETE_WINDOW", self._close)
         self.after_id = self.root.after(100, self._process_events)
 
@@ -249,30 +254,33 @@ class CanaryCarFinderApp:
         self.advanced_frame = ctk.CTkFrame(form, fg_color="#f8fbfb", border_color=COLORS["line"], border_width=1, corner_radius=12)
         self.advanced_frame.grid(row=9, column=0, padx=24, pady=(0, 12), sticky="ew")
         self.advanced_frame.grid_columnconfigure(0, weight=1)
-        self._section_label(self.advanced_frame, "Flight-friendly pickup times", 0)
-        self._time_selector(self.advanced_frame, "Collect the car around", self.pickup_time_var, 1)
-        self._time_selector(self.advanced_frame, "Return the car around", self.return_time_var, 2)
+        self._section_label(self.advanced_frame, "Pickup and return time windows", 0)
         self._option(
             self.advanced_frame,
-            "Collection time choice",
+            "Time choice",
             self.time_mode_var,
             TIME_MODES,
-            3,
+            1,
             command=lambda _: self._refresh_time_mode(),
         )
-        self.time_flex_menu = self._option(self.advanced_frame, "How flexible are your times?", self.time_flex_var, TIME_FLEX_OPTIONS, 4)
+        self.pickup_time_window_controls = self._time_window_selector(
+            self.advanced_frame, "Pick up between", self.pickup_time_var, self.pickup_time_latest_var, 2
+        )
+        self.return_time_window_controls = self._time_window_selector(
+            self.advanced_frame, "Return between", self.return_time_var, self.return_time_latest_var, 3
+        )
         ctk.CTkLabel(
             self.advanced_frame,
-            text="If your flight time is flexible, we can also check nearby pickup and return times for cheaper prices.",
+            text="Choose earliest and latest times. The app adjusts them for each provider first, then skips duplicate searches before estimating the runtime.",
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=12),
             wraplength=270,
             justify="left",
-        ).grid(row=10, column=0, padx=26, pady=(0, 12), sticky="w")
-        self._section_label(self.advanced_frame, "Car preferences", 6)
-        self._option(self.advanced_frame, "Transmission", self.transmission_var, TRANSMISSIONS, 7)
-        self._option(self.advanced_frame, "Vehicle seats", self.vehicle_seats_var, SEAT_OPTIONS, 8)
-        self._option(self.advanced_frame, "Vehicle type", self.vehicle_type_var, VEHICLE_TYPES, 9)
+        ).grid(row=8, column=0, padx=26, pady=(0, 12), sticky="w")
+        self._section_label(self.advanced_frame, "Car preferences", 9)
+        self._option(self.advanced_frame, "Transmission", self.transmission_var, TRANSMISSIONS, 10)
+        self._option(self.advanced_frame, "Vehicle seats", self.vehicle_seats_var, SEAT_OPTIONS, 11)
+        self._option(self.advanced_frame, "Vehicle type", self.vehicle_type_var, VEHICLE_TYPES, 12)
         self._section_label(self.advanced_frame, "Speed and display", 19)
         self._option(self.advanced_frame, "Reuse recent results", self.cache_mode_var, CACHE_MODE_OPTIONS, 20)
 
@@ -635,6 +643,37 @@ class CanaryCarFinderApp:
         menu.grid(row=row * 2, column=0, padx=26, pady=(0, 14), sticky="ew")
         return menu
 
+    def _time_window_selector(self, parent, label, earliest_variable, latest_variable, row):
+        ctk.CTkLabel(parent, text=label, text_color=COLORS["ink"], font=ctk.CTkFont(size=13, weight="bold")).grid(
+            row=row * 2 - 1, column=0, padx=26, pady=(4, 5), sticky="w"
+        )
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.grid(row=row * 2, column=0, padx=26, pady=(0, 14), sticky="ew")
+        frame.grid_columnconfigure((0, 1), weight=1, uniform="time-window")
+        earliest = ctk.CTkOptionMenu(
+            frame,
+            values=TIME_OPTIONS,
+            variable=earliest_variable,
+            height=38,
+            corner_radius=10,
+            fg_color=COLORS["ocean"],
+            button_color=COLORS["deep_ocean"],
+            button_hover_color=COLORS["sun"],
+        )
+        earliest.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        latest = ctk.CTkOptionMenu(
+            frame,
+            values=TIME_OPTIONS,
+            variable=latest_variable,
+            height=38,
+            corner_radius=10,
+            fg_color=COLORS["ocean"],
+            button_color=COLORS["deep_ocean"],
+            button_hover_color=COLORS["sun"],
+        )
+        latest.grid(row=0, column=1, padx=(6, 0), sticky="ew")
+        return earliest, latest
+
     def _open_calendar(self, iso_variable, display_variable):
         selected = date.fromisoformat(iso_variable.get())
         dialog = ctk.CTkToplevel(self.root)
@@ -777,13 +816,19 @@ class CanaryCarFinderApp:
         search_settings.vehicle_type = self.vehicle_type_var.get()
         search_settings.cache_mode = self.cache_mode_var.get()
         search_settings.time_mode = USE_CHOSEN_TIMES if preset == QUICK_SEARCH else self.time_mode_var.get()
-        search_settings.time_flex = self.time_flex_var.get()
         if preset == QUICK_SEARCH:
             search_settings.pickup_times = [self.pickup_time_var.get()]
             search_settings.return_times = [self.return_time_var.get()]
+        elif search_settings.time_mode == USE_CHOSEN_TIMES:
+            search_settings.pickup_times = [self.pickup_time_var.get()]
+            search_settings.return_times = [self.return_time_var.get()]
         else:
-            search_settings.pickup_times = self._generated_times(self.pickup_time_var.get())
-            search_settings.return_times = self._generated_times(self.return_time_var.get())
+            search_settings.pickup_times = self._generated_time_window(
+                self.pickup_time_var.get(), self.pickup_time_latest_var.get(), "pickup"
+            )
+            search_settings.return_times = self._generated_time_window(
+                self.return_time_var.get(), self.return_time_latest_var.get(), "return"
+            )
         search_settings.pickup_time = search_settings.pickup_times[0]
         search_settings.return_time = search_settings.return_times[0]
         search_settings.final_return_time = search_settings.return_times[0]
@@ -1003,8 +1048,9 @@ class CanaryCarFinderApp:
             "return_date": self.return_date_var.get().strip(),
             "pickup_time": self.pickup_time_var.get(),
             "return_time": self.return_time_var.get(),
+            "pickup_time_latest": self.pickup_time_latest_var.get(),
+            "return_time_latest": self.return_time_latest_var.get(),
             "time_mode": self.time_mode_var.get(),
-            "time_flex": self.time_flex_var.get(),
             "min_days": self.min_days_var.get().strip(),
             "max_days": self.max_days_var.get().strip(),
             "search_mode": self.search_mode_var.get(),
@@ -1033,7 +1079,8 @@ class CanaryCarFinderApp:
             self.length_help_var.set("We will try hire lengths between these shortest and longest stays.")
             self.cache_mode_var.set("Reuse prices from today")
             self.time_mode_var.set(TRY_NEARBY_TIMES)
-            self.time_flex_var.set(TIME_FLEX_OPTIONS[0])
+            if not self.initializing:
+                self._set_default_time_window(60)
         else:
             self.preset_help_var.set(
                 "Search hundreds of date, hire length and collection-time choices. Slower, but most thorough."
@@ -1042,7 +1089,8 @@ class CanaryCarFinderApp:
             self.length_help_var.set("We will try every hire length in this range.")
             self.cache_mode_var.set("Reuse prices from today")
             self.time_mode_var.set(TRY_NEARBY_TIMES)
-            self.time_flex_var.set(TIME_FLEX_OPTIONS[1])
+            if not self.initializing:
+                self._set_default_time_window(120)
         self._refresh_time_mode()
 
     def _toggle_advanced(self):
@@ -1055,38 +1103,49 @@ class CanaryCarFinderApp:
             self.advanced_button.configure(text="Need more control? Show search options")
 
     def _refresh_time_mode(self):
-        if hasattr(self, "time_flex_menu"):
-            state = "normal" if self.time_mode_var.get() == TRY_NEARBY_TIMES else "disabled"
-            self.time_flex_menu.configure(state=state)
+        state = "normal" if self.time_mode_var.get() == TRY_NEARBY_TIMES else "disabled"
+        for controls in (getattr(self, "pickup_time_window_controls", ()), getattr(self, "return_time_window_controls", ())):
+            for index, control in enumerate(controls):
+                if index == 0:
+                    control.configure(state="normal")
+                else:
+                    control.configure(state=state)
 
-    def _generated_times(self, centre):
-        if centre not in TIME_OPTIONS:
+    def _generated_time_window(self, earliest, latest, label):
+        if earliest not in TIME_OPTIONS or latest not in TIME_OPTIONS:
             raise ValueError("Choose pickup and return times from the list.")
-        if self.time_mode_var.get() != TRY_NEARBY_TIMES:
-            return [centre]
-        radius = TIME_FLEX_MINUTES.get(self.time_flex_var.get(), 60)
-        centre_minutes = _time_to_minutes(centre)
-        return [
-            value
-            for value in TIME_OPTIONS
-            if abs(_time_to_minutes(value) - centre_minutes) <= radius
-        ]
+        start = _time_to_minutes(earliest)
+        end = _time_to_minutes(latest)
+        if end < start:
+            raise ValueError(f"The latest {label} time must be after the earliest {label} time.")
+        return [value for value in TIME_OPTIONS if start <= _time_to_minutes(value) <= end]
+
+    def _set_default_time_window(self, minutes):
+        pickup_start, pickup_end = _time_window_around(self.pickup_time_var.get(), minutes)
+        return_start, return_end = _time_window_around(self.return_time_var.get(), minutes)
+        self.pickup_time_var.set(pickup_start)
+        self.pickup_time_latest_var.set(pickup_end)
+        self.return_time_var.set(return_start)
+        self.return_time_latest_var.set(return_end)
 
     def _confirm_search(self, estimate):
         searches = estimate.get("provider_searches_estimated", 0)
         runtime = estimate.get("estimated_duration_text", "Unknown")
         message = (
             f"This search will check approximately {searches} live prices.\n\n"
+            f"Search size: {estimate.get('search_size_band', 'Small')}\n"
             f"Dates to compare: {estimate.get('date_combinations_generated', 0)}\n"
             f"Time choices: {estimate.get('time_combinations_generated', 0)}\n"
+            f"Duplicate searches skipped: {estimate.get('duplicate_searches_removed', 0)}\n"
             f"Recent results: {estimate.get('cache_mode', 'Always check fresh prices')}\n"
             f"Estimated time: {runtime}\n\n"
             "Continue?"
         )
-        if estimate.get("estimated_duration_seconds", 0) > 300:
+        if searches > 1500:
             message = (
-                f"This is a thorough search.\n\n"
+                f"This is an {estimate.get('search_size_band', 'Extreme').lower()} search.\n\n"
                 f"It will check approximately {searches} live prices.\n\n"
+                f"Duplicate searches already skipped: {estimate.get('duplicate_searches_removed', 0)}\n"
                 f"Estimated time: {runtime}.\n\n"
                 "You can continue, or make the search faster."
             )
@@ -1226,18 +1285,9 @@ def _display_date(value):
 
 
 def _saved_time_mode(value):
-    if value in {"Flexible Time", TRY_NEARBY_TIMES}:
+    if value in {"Flexible Time", "Try nearby times", TRY_NEARBY_TIMES}:
         return TRY_NEARBY_TIMES
     return USE_CHOSEN_TIMES
-
-
-def _saved_time_flex(value):
-    legacy = {
-        "+/- 30 minutes": TIME_FLEX_OPTIONS[0],
-        "+/- 1 hour": TIME_FLEX_OPTIONS[1],
-        "+/- 2 hours": TIME_FLEX_OPTIONS[2],
-    }
-    return legacy.get(value, value if value in TIME_FLEX_OPTIONS else TIME_FLEX_OPTIONS[1])
 
 
 def _saved_recent_price_choice(value):
@@ -1252,6 +1302,17 @@ def _saved_recent_price_choice(value):
 def _time_to_minutes(value):
     hour, minute = [int(part) for part in value.split(":", 1)]
     return hour * 60 + minute
+
+
+def _time_window_around(value, minutes):
+    centre = _time_to_minutes(value)
+    start = max(_time_to_minutes(TIME_OPTIONS[0]), centre - minutes)
+    end = min(_time_to_minutes(TIME_OPTIONS[-1]), centre + minutes)
+    return _nearest_time(start), _nearest_time(end)
+
+
+def _nearest_time(minutes):
+    return min(TIME_OPTIONS, key=lambda value: abs(_time_to_minutes(value) - minutes))
 
 
 def _duration_text(seconds):

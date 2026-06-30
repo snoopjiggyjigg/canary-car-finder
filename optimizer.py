@@ -2,6 +2,16 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 
+SEARCH_SIZE_BANDS = [
+    ("Small", 120),
+    ("Medium", 500),
+    ("Large", 1500),
+    ("Extreme", None),
+]
+
+COMMON_HIRE_LENGTHS = [7, 5, 6, 4, 8, 10, 9, 14, 3, 11, 12, 13, 2, 1]
+
+
 @dataclass(frozen=True)
 class SearchRequest:
     pickup: object
@@ -27,7 +37,7 @@ def date_windows(settings, mode):
             windows.append((pickup, dropoff))
             dropoff += timedelta(days=1)
         pickup += timedelta(days=1)
-    return windows
+    return _order_windows(windows)
 
 
 def time_pairs(settings):
@@ -61,6 +71,18 @@ def provider_requests(settings, mode, provider):
     return requests, duplicates
 
 
+def build_search_plan(settings, mode, providers):
+    plans = []
+    duplicates_removed = 0
+    provider_searches = 0
+    for provider in providers:
+        requests, duplicates = provider_requests(settings, mode, provider)
+        plans.append((provider, requests))
+        duplicates_removed += duplicates
+        provider_searches += len(requests)
+    return plans, duplicates_removed, provider_searches
+
+
 def search_summary(settings, mode, provider_count=0, duplicates_removed=0, provider_searches=0):
     dates = date_windows(settings, mode)
     times = time_pairs(settings)
@@ -78,7 +100,29 @@ def search_summary(settings, mode, provider_count=0, duplicates_removed=0, provi
         "provider_count": provider_count,
         "duplicate_searches_removed": duplicates_removed,
         "provider_searches_completed": provider_searches,
+        "provider_searches_estimated": provider_searches,
+        "search_size_band": search_size_band(provider_searches),
     }
+
+
+def search_size_band(provider_searches):
+    for label, limit in SEARCH_SIZE_BANDS:
+        if limit is None or provider_searches <= limit:
+            return label
+    return "Extreme"
+
+
+def _order_windows(windows):
+    def key(window):
+        pickup, dropoff = window
+        length = (dropoff - pickup).days
+        if length in COMMON_HIRE_LENGTHS:
+            length_rank = COMMON_HIRE_LENGTHS.index(length)
+        else:
+            length_rank = len(COMMON_HIRE_LENGTHS) + abs(length - 7)
+        return (length_rank, pickup, dropoff)
+
+    return sorted(windows, key=key)
 
 
 def _setting_list(settings, name, fallback):

@@ -11,6 +11,7 @@
 - Added a live search dashboard with pause and stop controls.
 - Improved recommendation badges in the HTML report.
 - Improved the Windows release build so `build_windows.bat` creates a complete versioned release folder and ZIP.
+- Redesigned search planning to use pickup/return time windows, deduplicate provider-adjusted requests before estimating runtime, and search common hire lengths first.
 
 # v1.1.0
 

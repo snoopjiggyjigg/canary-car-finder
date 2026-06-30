@@ -1,7 +1,7 @@
 import logging
 from time import perf_counter
 
-from optimizer import provider_requests, search_summary
+from optimizer import build_search_plan, search_summary
 from providers import get_providers
 from reports import write_reports
 from search_cache import SearchCache, cache_mode_label
@@ -10,18 +10,12 @@ from search_cache import SearchCache, cache_mode_label
 def run_search(settings, mode, progress_callback=None, stop_callback=None, pause_callback=None):
     providers = get_providers(settings)
     cache = SearchCache()
-    plans = []
-    duplicates_removed = 0
-    for provider in providers:
-        requests, duplicates = provider_requests(settings, mode, provider)
-        plans.append((provider, requests))
-        duplicates_removed += duplicates
+    plans, duplicates_removed, total = build_search_plan(settings, mode, providers)
 
     rows = []
-    total = sum(len(requests) for _, requests in plans)
     completed = 0
     started_at = perf_counter()
-    stats = _initial_stats(settings, total, duplicates_removed)
+    stats = _initial_stats(settings, total, duplicates_removed, _estimated_plan_seconds(plans))
     summary = _summary(settings, mode, len(providers), stats, started_at)
     write_reports(rows, _progress("running", "Starting", completed, total, "Preparing provider searches", summary))
 
@@ -149,14 +143,9 @@ def run_search(settings, mode, progress_callback=None, stop_callback=None, pause
 
 def estimate_search(settings, mode):
     providers = get_providers(settings)
-    duplicates_removed = 0
-    provider_searches = 0
-    for provider in providers:
-        requests, duplicates = provider_requests(settings, mode, provider)
-        duplicates_removed += duplicates
-        provider_searches += len(requests)
+    plans, duplicates_removed, provider_searches = build_search_plan(settings, mode, providers)
     summary = search_summary(settings, mode, len(providers), duplicates_removed, provider_searches)
-    seconds = _estimated_duration_seconds(provider_searches)
+    seconds = _estimated_plan_seconds(plans)
     summary.update(
         {
             "provider_searches_estimated": provider_searches,
@@ -185,25 +174,24 @@ def _summary(settings, mode, provider_count, stats, started_at):
         mode,
         provider_count,
         stats["duplicate_searches_removed"],
-        stats["provider_searches_completed"],
+        stats["total_provider_searches"],
     )
     elapsed = perf_counter() - started_at
     remaining = max(stats["total_provider_searches"] - stats["provider_searches_completed"], 0)
-    live_done = stats["live_searches"]
-    average_live = elapsed / live_done if live_done else 0
+    expected_remaining = max(stats.get("estimated_total_seconds", 0) - elapsed, 0)
     summary.update(stats)
     summary.update(
         {
             "cache_mode": cache_mode_label(settings),
             "elapsed_seconds": round(elapsed, 2),
-            "estimated_remaining_seconds": round(remaining * average_live, 2) if average_live else None,
+            "estimated_remaining_seconds": round(expected_remaining, 2) if remaining else 0,
             "cache_hit_rate": _cache_hit_rate(stats),
         }
     )
     return summary
 
 
-def _initial_stats(settings, total, duplicates_removed):
+def _initial_stats(settings, total, duplicates_removed, estimated_total_seconds):
     return {
         "cache_mode": cache_mode_label(settings),
         "cache_hits": 0,
@@ -211,6 +199,7 @@ def _initial_stats(settings, total, duplicates_removed):
         "new_provider_searches": 0,
         "duplicate_searches_removed": duplicates_removed,
         "total_provider_searches": total,
+        "estimated_total_seconds": estimated_total_seconds,
         "provider_searches_completed": 0,
         "browser_sessions_opened": 0,
         "estimated_time_saved_seconds": 0,
@@ -280,16 +269,24 @@ def _estimated_duration_seconds(provider_searches):
     return provider_searches * 2
 
 
+def _estimated_plan_seconds(plans):
+    return sum(len(requests) * _estimated_seconds_per_search(provider.name) for provider, requests in plans)
+
+
 def _duration_range(seconds):
     low = int(seconds * 0.8)
     high = int(seconds * 1.2)
-    return f"{_duration_text(low)} to {_duration_text(high)}"
+    low_text = _duration_text(low)
+    high_text = _duration_text(high)
+    if low_text == high_text:
+        return low_text
+    return f"{low_text} to {high_text}"
 
 
 def _duration_text(seconds):
     minutes = max(round(seconds / 60), 1)
     if minutes < 60:
-        return f"{minutes} minutes"
+        return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
     hours = minutes // 60
     remainder = minutes % 60
     return f"{hours}h {remainder}m"

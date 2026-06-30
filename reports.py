@@ -417,9 +417,10 @@ def _holiday_summary_html(df, progress):
         {_stat("Return Times", escape(str(summary.get("return_time_options", "N/A"))))}
         {_stat("Date Choices", str(summary.get("date_combinations_generated", 0)))}
         {_stat("Time Choices", str(summary.get("time_combinations_generated", 0)))}
-        {_stat("Prices Considered", str(summary.get("total_combinations_generated", 0)))}
+        {_stat("Search Size", escape(str(summary.get("search_size_band", "N/A"))))}
+        {_stat("Raw Choices Generated", str(summary.get("total_combinations_generated", 0)))}
         {_stat("Repeated Checks Skipped", str(summary.get("duplicate_searches_removed", 0)))}
-        {_stat("Prices Checked", str(summary.get("provider_searches_completed", 0)))}
+        {_stat("Provider Searches", str(summary.get("total_provider_searches", summary.get("provider_searches_completed", 0))))}
         {_stat("Recent Results Used", str(summary.get("cache_hits", 0)))}
         {_stat("Fresh Prices Checked", str(summary.get("live_searches", 0)))}
         {_stat("Provider Visits", str(summary.get("browser_sessions_opened", 0)))}
