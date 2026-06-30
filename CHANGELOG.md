@@ -6,6 +6,10 @@
 - Improved report recommendation wording and presentation.
 - Updated support and holiday-home links.
 - Polished user-facing wording across the desktop app and report.
+- Redesigned search choices as Quick Search, Smart Search and Thorough Search.
+- Added clearer runtime estimates for long searches.
+- Added a live search dashboard with pause and stop controls.
+- Improved recommendation badges in the HTML report.
 
 # v1.1.0
 

@@ -123,8 +123,8 @@ def _render_html(df, progress):
         .winner .eyebrow {{ color:#b9e4dc; font-size:13px; font-weight:900; text-transform:uppercase; }}
         .winner h2 {{ margin:10px 0 8px; font-size:30px; letter-spacing:0; }}
         .winner-meta {{ color:#d9e8e4; line-height:1.55; }}
-        .reason-list {{ margin:12px 0 0; padding:0; list-style:none; color:var(--muted); line-height:1.7; }}
-        .reason-list li:before {{ content:"✓"; color:var(--accent); font-weight:950; margin-right:8px; }}
+        .reason-badges {{ display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }}
+        .reason-badge {{ display:inline-flex; align-items:center; gap:7px; padding:9px 11px; border-radius:999px; background:#eef8f5; color:var(--ink); font-weight:850; border:1px solid #cfe8e2; }}
         .winner-price {{ font-size:54px; font-weight:950; margin-top:18px; }}
         .side-panel {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:20px; }}
         .side-panel h2 {{ margin:0 0 12px; font-size:20px; }}
@@ -690,22 +690,25 @@ def _booking_info(row):
 
 
 def _recommendation_reason(best, successful):
-    reasons = ["Cheapest overall"]
+    reasons = [("🏆", "Cheapest Overall")]
     if not successful.empty and best.get("effective_daily") == successful["effective_daily"].min():
-        reasons.append("Best value per day")
+        reasons.append(("⭐", "Best Daily Price"))
     transmission = best.get("_transmission")
     seats = best.get("_seats")
     vehicle_type = best.get("_vehicle_type")
     if not pd.isna(transmission) and transmission:
-        reasons.append(str(transmission))
+        reasons.append(("🚗", str(transmission)))
     if not pd.isna(seats) and seats:
-        reasons.append(f"{int(seats)} seats")
+        reasons.append(("👥", f"{int(seats)} Seats"))
     if not pd.isna(vehicle_type) and vehicle_type:
-        reasons.append(str(vehicle_type))
+        reasons.append(("🚙", str(vehicle_type)))
     if _times_match_request(best):
-        reasons.append("Closest match to your requested times")
-    items = "".join(f"<li>{escape(reason)}</li>" for reason in reasons)
-    return f"<ul class='reason-list'>{items}</ul>"
+        reasons.append(("🕒", "Closest Match"))
+    items = "".join(
+        f"<span class='reason-badge'><span>{escape(icon)}</span>{escape(reason)}</span>"
+        for icon, reason in reasons
+    )
+    return f"<div class='reason-badges'>{items}</div>"
 
 
 def _times_match_request(row):

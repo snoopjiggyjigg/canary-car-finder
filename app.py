@@ -27,9 +27,12 @@ TIME_OPTIONS = [f"{hour:02d}:{minute:02d}" for hour in range(6, 24) for minute i
 PICKUP_TIME_OPTIONS = TIME_OPTIONS
 RETURN_TIME_OPTIONS = TIME_OPTIONS
 TRANSMISSIONS = ["Any", "Manual", "Automatic"]
-COMPARE_EXACT_DATES = "Compare Exact Dates"
-FIND_CHEAPEST_HOLIDAY = "Find the Cheapest Holiday"
-SEARCH_PRESETS = [COMPARE_EXACT_DATES, FIND_CHEAPEST_HOLIDAY]
+QUICK_SEARCH = "Quick Search"
+SMART_SEARCH = "Smart Search (Recommended)"
+THOROUGH_SEARCH = "Thorough Search"
+COMPARE_EXACT_DATES = QUICK_SEARCH
+FIND_CHEAPEST_HOLIDAY = SMART_SEARCH
+SEARCH_PRESETS = [QUICK_SEARCH, SMART_SEARCH, THOROUGH_SEARCH]
 CACHE_MODE_OPTIONS = list(CACHE_MODES.keys())
 SEAT_OPTIONS = ["Any", "2+", "4+", "5+", "7+", "9+"]
 VEHICLE_TYPES = ["Any", "Mini", "Economy", "Compact", "Family", "SUV", "Van"]
@@ -62,6 +65,8 @@ class CanaryCarFinderApp:
         self.events = queue.Queue()
         self.worker = None
         self.search_running = False
+        self.stop_requested = threading.Event()
+        self.pause_requested = threading.Event()
         self.after_id = None
 
         ctk.set_appearance_mode("light")
@@ -106,6 +111,11 @@ class CanaryCarFinderApp:
         )
         self.count_var = ctk.StringVar(value="0 checked")
         self.fact_var = ctk.StringVar(value="Recent results can be reused to save you time.")
+        self.current_provider_var = ctk.StringVar(value="Not started")
+        self.current_combination_var = ctk.StringVar(value="Choose your dates and click Find my car.")
+        self.best_price_var = ctk.StringVar(value="--")
+        self.cheapest_provider_var = ctk.StringVar(value="--")
+        self.remaining_time_var = ctk.StringVar(value="--")
         self.advanced_visible = False
         self.support_var = ctk.StringVar(
             value=(
@@ -193,7 +203,7 @@ class CanaryCarFinderApp:
         self.date_help_var = ctk.StringVar()
         self.length_help_var = ctk.StringVar()
 
-        self._section_label(form, "Car collection", 3)
+        self._section_label(form, "Pickup location", 3)
         ctk.CTkLabel(
             form,
             text="Fuerteventura Airport",
@@ -204,9 +214,9 @@ class CanaryCarFinderApp:
             font=ctk.CTkFont(size=15, weight="bold"),
         ).grid(row=4, column=0, padx=24, pady=(0, 10), sticky="ew")
 
-        self._section_label(form, "Travel dates", 5)
+        self._section_label(form, "Hire dates", 5)
         self._date_pair(form, 6)
-        self._section_label(form, "Holiday length", 7)
+        self._section_label(form, "Hire length", 7)
         self._entry_pair(form, 8)
         action_frame = ctk.CTkFrame(sidebar, fg_color=COLORS["panel"], corner_radius=0)
         action_frame.grid(row=1, column=0, padx=16, pady=(4, 6), sticky="ew")
@@ -227,7 +237,7 @@ class CanaryCarFinderApp:
 
         self.advanced_button = ctk.CTkButton(
             action_frame,
-            text="More choices",
+            text="Need more control? Show search options",
             height=34,
             fg_color="#edf6f7",
             hover_color=COLORS["sand"],
@@ -239,7 +249,7 @@ class CanaryCarFinderApp:
         self.advanced_frame = ctk.CTkFrame(form, fg_color="#f8fbfb", border_color=COLORS["line"], border_width=1, corner_radius=12)
         self.advanced_frame.grid(row=9, column=0, padx=24, pady=(0, 12), sticky="ew")
         self.advanced_frame.grid_columnconfigure(0, weight=1)
-        self._section_label(self.advanced_frame, "Flight-friendly collection times", 0)
+        self._section_label(self.advanced_frame, "Flight-friendly pickup times", 0)
         self._time_selector(self.advanced_frame, "Collect the car around", self.pickup_time_var, 1)
         self._time_selector(self.advanced_frame, "Return the car around", self.return_time_var, 2)
         self._option(
@@ -253,7 +263,7 @@ class CanaryCarFinderApp:
         self.time_flex_menu = self._option(self.advanced_frame, "How flexible are your times?", self.time_flex_var, TIME_FLEX_OPTIONS, 4)
         ctk.CTkLabel(
             self.advanced_frame,
-            text="If your flight time is flexible, we can also check nearby collection and return times for cheaper prices.",
+            text="If your flight time is flexible, we can also check nearby pickup and return times for cheaper prices.",
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=12),
             wraplength=270,
@@ -332,6 +342,40 @@ class CanaryCarFinderApp:
             wraplength=560,
         ).grid(row=5, column=0, padx=26, pady=(0, 22), sticky="w")
 
+        dashboard = ctk.CTkFrame(status, fg_color="#f8fbfb", border_color=COLORS["line"], border_width=1, corner_radius=14)
+        dashboard.grid(row=6, column=0, padx=26, pady=(0, 20), sticky="ew")
+        dashboard.grid_columnconfigure((0, 1), weight=1)
+        self._dashboard_stat(dashboard, "Current provider", self.current_provider_var, 0, 0)
+        self._dashboard_stat(dashboard, "Current search", self.current_combination_var, 0, 1)
+        self._dashboard_stat(dashboard, "Best price so far", self.best_price_var, 1, 0)
+        self._dashboard_stat(dashboard, "Cheapest provider", self.cheapest_provider_var, 1, 1)
+        self._dashboard_stat(dashboard, "Estimated time left", self.remaining_time_var, 2, 0)
+
+        controls = ctk.CTkFrame(dashboard, fg_color="transparent")
+        controls.grid(row=2, column=1, padx=14, pady=(0, 14), sticky="ew")
+        controls.grid_columnconfigure((0, 1), weight=1)
+        self.pause_button = ctk.CTkButton(
+            controls,
+            text="Pause Search",
+            height=34,
+            state="disabled",
+            fg_color="#edf6f7",
+            hover_color=COLORS["sand"],
+            text_color=COLORS["deep_ocean"],
+            command=self._toggle_pause,
+        )
+        self.pause_button.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+        self.stop_button = ctk.CTkButton(
+            controls,
+            text="Stop Search",
+            height=34,
+            state="disabled",
+            fg_color=COLORS["coral"],
+            hover_color="#bf574b",
+            command=self._stop_search,
+        )
+        self.stop_button.grid(row=0, column=1, sticky="ew")
+
         self.log = ctk.CTkTextbox(
             parent,
             height=220,
@@ -408,6 +452,25 @@ class CanaryCarFinderApp:
             command=self._show_about,
         ).grid(row=0, column=1)
 
+    def _dashboard_stat(self, parent, label, variable, row, column):
+        card = ctk.CTkFrame(parent, fg_color=COLORS["panel"], corner_radius=12)
+        card.grid(row=row, column=column, padx=14, pady=(14, 10), sticky="nsew")
+        card.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            card,
+            text=label,
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).grid(row=0, column=0, padx=14, pady=(12, 2), sticky="w")
+        ctk.CTkLabel(
+            card,
+            textvariable=variable,
+            text_color=COLORS["ink"],
+            font=ctk.CTkFont(size=17, weight="bold"),
+            wraplength=250,
+            justify="left",
+        ).grid(row=1, column=0, padx=14, pady=(0, 12), sticky="w")
+
     def _entry(self, parent, label, variable, row):
         ctk.CTkLabel(parent, text=label, text_color=COLORS["ink"], font=ctk.CTkFont(size=13, weight="bold")).grid(
             row=row * 2 - 1, column=0, padx=26, pady=(4, 5), sticky="w"
@@ -427,8 +490,9 @@ class CanaryCarFinderApp:
         frame.grid(row=row, column=0, padx=24, pady=(0, 8), sticky="ew")
         frame.grid_columnconfigure(0, weight=1)
         subtitles = {
-            COMPARE_EXACT_DATES: "Compare prices for one specific holiday.",
-            FIND_CHEAPEST_HOLIDAY: "Search multiple dates and times to find the cheapest option.",
+            QUICK_SEARCH: "One exact set of dates and times. Fastest option.",
+            SMART_SEARCH: "Nearby dates and pickup times. Best balance of speed and savings.",
+            THOROUGH_SEARCH: "Hundreds of combinations. Slower, but most likely to find the lowest price.",
         }
         for index, value in enumerate(SEARCH_PRESETS):
             option = ctk.CTkFrame(frame, fg_color="#f8fbfb", border_color=COLORS["line"], border_width=1, corner_radius=10)
@@ -649,11 +713,20 @@ class CanaryCarFinderApp:
 
         self._save_user_settings()
         self.search_running = True
+        self.stop_requested.clear()
+        self.pause_requested.clear()
         self.search_button.configure(state="disabled", text="Checking prices...")
+        self.pause_button.configure(state="normal", text="Pause Search")
+        self.stop_button.configure(state="normal")
         self.log.configure(state="normal")
         self.log.delete("1.0", "end")
         self.log.configure(state="disabled")
         self.support_var.set("Checking prices now. I will show the saving once everything is compared.")
+        self.current_provider_var.set("Getting ready")
+        self.current_combination_var.set("Preparing provider websites")
+        self.best_price_var.set("--")
+        self.cheapest_provider_var.set("--")
+        self.remaining_time_var.set("--")
         self._set_status("Getting ready", "Preparing to check the provider websites", 0, 0)
 
         self.worker = threading.Thread(target=self._run_search, args=(search_settings, mode), daemon=True)
@@ -703,10 +776,14 @@ class CanaryCarFinderApp:
         search_settings.vehicle_seats = self.vehicle_seats_var.get()
         search_settings.vehicle_type = self.vehicle_type_var.get()
         search_settings.cache_mode = self.cache_mode_var.get()
-        search_settings.time_mode = self.time_mode_var.get()
+        search_settings.time_mode = USE_CHOSEN_TIMES if preset == QUICK_SEARCH else self.time_mode_var.get()
         search_settings.time_flex = self.time_flex_var.get()
-        search_settings.pickup_times = self._generated_times(self.pickup_time_var.get())
-        search_settings.return_times = self._generated_times(self.return_time_var.get())
+        if preset == QUICK_SEARCH:
+            search_settings.pickup_times = [self.pickup_time_var.get()]
+            search_settings.return_times = [self.return_time_var.get()]
+        else:
+            search_settings.pickup_times = self._generated_times(self.pickup_time_var.get())
+            search_settings.return_times = self._generated_times(self.return_time_var.get())
         search_settings.pickup_time = search_settings.pickup_times[0]
         search_settings.return_time = search_settings.return_times[0]
         search_settings.final_return_time = search_settings.return_times[0]
@@ -714,7 +791,13 @@ class CanaryCarFinderApp:
 
     def _run_search(self, search_settings, mode):
         try:
-            rows, reports = run_search(search_settings, mode, progress_callback=self._progress)
+            rows, reports = run_search(
+                search_settings,
+                mode,
+                progress_callback=self._progress,
+                stop_callback=self.stop_requested.is_set,
+                pause_callback=self.pause_requested.is_set,
+            )
             self.events.put(("done", rows, reports))
         except Exception as exc:
             self.events.put(("error", exc))
@@ -743,6 +826,7 @@ class CanaryCarFinderApp:
             self.after_id = self.root.after(100, self._process_events)
 
     def _close(self):
+        self.stop_requested.set()
         if self.after_id:
             try:
                 self.root.after_cancel(self.after_id)
@@ -754,11 +838,17 @@ class CanaryCarFinderApp:
     def _finish_search(self, rows, reports):
         _, _, html_path = reports
         total = len(rows)
-        self._set_status("Your results are ready", f"Opening your report: {html_path.resolve()}", total, total)
+        if self.stop_requested.is_set():
+            self._set_status("Search stopped", f"Opening a report with the best results found so far: {html_path.resolve()}", total, total)
+            self._append_log("Search stopped. Completed results were kept and included in the report.")
+        else:
+            self._set_status("Your results are ready", f"Opening your report: {html_path.resolve()}", total, total)
         self._append_log(f"Checked {total} prices.")
         self._update_support_message(rows)
         self.search_running = False
         self.search_button.configure(state="normal", text="Find my car")
+        self.pause_button.configure(state="disabled", text="Pause Search")
+        self.stop_button.configure(state="disabled")
         webbrowser.open(html_path.resolve().as_uri())
 
     def _fail_search(self, exc):
@@ -769,6 +859,32 @@ class CanaryCarFinderApp:
         )
         self.search_running = False
         self.search_button.configure(state="normal", text="Find my car")
+        self.pause_button.configure(state="disabled", text="Pause Search")
+        self.stop_button.configure(state="disabled")
+
+    def _toggle_pause(self):
+        if not self.search_running:
+            return
+        if self.pause_requested.is_set():
+            self.pause_requested.clear()
+            self.pause_button.configure(text="Pause Search")
+            self._append_log("Search resumed.")
+            self.fact_var.set("Back to checking live prices.")
+        else:
+            self.pause_requested.set()
+            self.pause_button.configure(text="Resume Search")
+            self._append_log("Search paused. Completed results are safe.")
+            self.fact_var.set("Paused. Resume when you are ready, or stop to keep the results found so far.")
+
+    def _stop_search(self):
+        if not self.search_running:
+            return
+        self.stop_requested.set()
+        self.pause_requested.clear()
+        self.pause_button.configure(state="disabled", text="Pause Search")
+        self.stop_button.configure(state="disabled")
+        self._set_status("Stopping search", "Finishing the current provider check, then your report will open with completed results.", 0, 0)
+        self._append_log("Stop requested. Keeping completed results.")
 
     def _set_status(self, title, detail, completed, total):
         self.status_var.set(title)
@@ -871,10 +987,12 @@ class CanaryCarFinderApp:
 
     def _saved_preset(self):
         saved = self.user_settings.get("search_mode", SEARCH_PRESETS[0])
-        if saved in {"Single Search", "Quick Search", COMPARE_EXACT_DATES}:
-            return COMPARE_EXACT_DATES
-        if saved in {"Holiday Optimiser", "Deep Search", FIND_CHEAPEST_HOLIDAY}:
-            return FIND_CHEAPEST_HOLIDAY
+        if saved in {"Single Search", "Compare Exact Dates", QUICK_SEARCH}:
+            return QUICK_SEARCH
+        if saved in {"Holiday Optimiser", "Find the Cheapest Holiday", "Smart Search", SMART_SEARCH}:
+            return SMART_SEARCH
+        if saved in {"Deep Search", THOROUGH_SEARCH}:
+            return THOROUGH_SEARCH
         if saved in SEARCH_PRESETS:
             return saved
         return SEARCH_PRESETS[0]
@@ -901,30 +1019,40 @@ class CanaryCarFinderApp:
 
     def _apply_preset(self):
         preset = self.search_mode_var.get()
-        if preset == COMPARE_EXACT_DATES:
-            self.preset_help_var.set("Compare prices for one specific holiday.")
+        if preset == QUICK_SEARCH:
+            self.preset_help_var.set("One exact set of dates and times. Fastest option.")
             self.date_help_var.set("Use these as your collection and return dates.")
             self.length_help_var.set("We work out the number of hire days from your dates.")
             self.cache_mode_var.set("Reuse prices from today")
             self.time_mode_var.set(USE_CHOSEN_TIMES)
-        else:
+        elif preset == SMART_SEARCH:
             self.preset_help_var.set(
-                "Search multiple dates, holiday lengths and collection times to automatically find the cheapest option."
+                "Search nearby dates and nearby collection times. Good balance between speed and savings."
             )
             self.date_help_var.set("Choose the earliest date you could leave and the latest date you could return.")
-            self.length_help_var.set("We will try holidays between these shortest and longest stays.")
+            self.length_help_var.set("We will try hire lengths between these shortest and longest stays.")
             self.cache_mode_var.set("Reuse prices from today")
             self.time_mode_var.set(TRY_NEARBY_TIMES)
+            self.time_flex_var.set(TIME_FLEX_OPTIONS[0])
+        else:
+            self.preset_help_var.set(
+                "Search hundreds of date, hire length and collection-time choices. Slower, but most thorough."
+            )
+            self.date_help_var.set("Choose the widest dates you could travel between.")
+            self.length_help_var.set("We will try every hire length in this range.")
+            self.cache_mode_var.set("Reuse prices from today")
+            self.time_mode_var.set(TRY_NEARBY_TIMES)
+            self.time_flex_var.set(TIME_FLEX_OPTIONS[1])
         self._refresh_time_mode()
 
     def _toggle_advanced(self):
         self.advanced_visible = not self.advanced_visible
         if self.advanced_visible:
             self.advanced_frame.grid()
-            self.advanced_button.configure(text="Hide more choices")
+            self.advanced_button.configure(text="Hide search options")
         else:
             self.advanced_frame.grid_remove()
-            self.advanced_button.configure(text="More choices")
+            self.advanced_button.configure(text="Need more control? Show search options")
 
     def _refresh_time_mode(self):
         if hasattr(self, "time_flex_menu"):
@@ -945,22 +1073,109 @@ class CanaryCarFinderApp:
         ]
 
     def _confirm_search(self, estimate):
+        searches = estimate.get("provider_searches_estimated", 0)
+        runtime = estimate.get("estimated_duration_text", "Unknown")
         message = (
-            f"{self.app_name} is ready to check prices.\n\n"
-            f"{estimate.get('date_combinations_generated', 0)} date choices\n"
-            f"{estimate.get('time_combinations_generated', 0)} collection and return time choices\n"
-            f"{estimate.get('provider_searches_estimated', 0)} prices to check\n\n"
+            f"This search will check approximately {searches} live prices.\n\n"
+            f"Dates to compare: {estimate.get('date_combinations_generated', 0)}\n"
+            f"Time choices: {estimate.get('time_combinations_generated', 0)}\n"
             f"Recent results: {estimate.get('cache_mode', 'Always check fresh prices')}\n"
-            f"Estimated time: {estimate.get('estimated_duration_text', 'Unknown')}\n\n"
+            f"Estimated time: {runtime}\n\n"
             "Continue?"
         )
+        if estimate.get("estimated_duration_seconds", 0) > 300:
+            message = (
+                f"This is a thorough search.\n\n"
+                f"It will check approximately {searches} live prices.\n\n"
+                f"Estimated time: {runtime}.\n\n"
+                "You can continue, or make the search faster."
+            )
+            if self._long_search_dialog(message):
+                return True
+            messagebox.showinfo(
+                "Make it faster",
+                "For faster results, try a smaller date range, fewer hire lengths, or choose exact pickup and return times.",
+                parent=self.root,
+            )
+            return False
         return messagebox.askokcancel("Start checking prices?", message, parent=self.root)
+
+    def _long_search_dialog(self, message):
+        result = {"continue": False}
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("This may take a little while")
+        dialog.geometry("460x330")
+        dialog.resizable(False, False)
+        dialog.configure(fg_color=COLORS["sky"])
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        panel = ctk.CTkFrame(dialog, fg_color=COLORS["panel"], corner_radius=16)
+        panel.pack(fill="both", expand=True, padx=22, pady=22)
+        ctk.CTkLabel(
+            panel,
+            text="This search may take a little while",
+            text_color=COLORS["ink"],
+            font=ctk.CTkFont(size=22, weight="bold"),
+            wraplength=380,
+            justify="left",
+        ).pack(anchor="w", padx=22, pady=(22, 10))
+        ctk.CTkLabel(
+            panel,
+            text=message,
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=14),
+            wraplength=380,
+            justify="left",
+        ).pack(anchor="w", padx=22, pady=(0, 18))
+
+        buttons = ctk.CTkFrame(panel, fg_color="transparent")
+        buttons.pack(fill="x", padx=22, pady=(0, 22))
+        buttons.grid_columnconfigure((0, 1), weight=1)
+
+        def choose_continue():
+            result["continue"] = True
+            dialog.destroy()
+
+        def choose_faster():
+            result["continue"] = False
+            dialog.destroy()
+
+        ctk.CTkButton(
+            buttons,
+            text="Make it Faster",
+            height=38,
+            fg_color="#edf6f7",
+            hover_color=COLORS["sand"],
+            text_color=COLORS["deep_ocean"],
+            command=choose_faster,
+        ).grid(row=0, column=0, padx=(0, 10), sticky="ew")
+        ctk.CTkButton(
+            buttons,
+            text="Continue",
+            height=38,
+            fg_color=COLORS["sun"],
+            hover_color="#d99b2e",
+            text_color="#1f2d32",
+            command=choose_continue,
+        ).grid(row=0, column=1, sticky="ew")
+
+        self.root.wait_window(dialog)
+        return result["continue"]
 
     def _progress_detail(self, message, summary):
         if not summary:
             return message
         remaining = max(summary.get("total_provider_searches", 0) - summary.get("provider_searches_completed", 0), 0)
-        self.fact_var.set(_search_fact(summary))
+        self.current_provider_var.set(str(summary.get("current_provider") or "N/A"))
+        self.current_combination_var.set(
+            f"{summary.get('current_holiday', 'N/A')} / {summary.get('current_time_combination', 'N/A')}"
+        )
+        best = summary.get("best_price_so_far")
+        self.best_price_var.set(f"EUR {float(best):.2f}" if best else "--")
+        self.cheapest_provider_var.set(str(summary.get("cheapest_provider_so_far") or "--"))
+        self.remaining_time_var.set(_duration_text(summary.get("estimated_remaining_seconds")))
+        self.fact_var.set(_search_fact(summary, message))
         return (
             f"{message}\n"
             f"Reused recent results: {summary.get('cache_hits', 0)} / Checked live: {summary.get('live_searches', 0)} / "
@@ -989,8 +1204,9 @@ class CanaryCarFinderApp:
         ).grid(row=0, column=0, padx=22, pady=(22, 12), sticky="w")
         help_text = (
             f"{self.app_name} checks PlusCar, AutoReisen, Cicar and Payless Car because they are trusted local companies.\n\n"
-            "If your dates are fixed, choose Compare Exact Dates and we will check that one holiday.\n\n"
-            "If your plans are flexible, choose Find the Cheapest Holiday. Moving your holiday by a day or two, or collecting the car slightly earlier or later, can sometimes save money.\n\n"
+            "Choose Quick Search when your dates and times are fixed. It checks one exact holiday and is the fastest option.\n\n"
+            "Choose Smart Search when you have a little flexibility. It checks nearby dates and pickup times to look for a better price without making you wait too long.\n\n"
+            "Choose Thorough Search when price matters most. It can check hundreds of real prices, so it may take longer, but it gives the app the best chance of finding the cheapest option.\n\n"
             "Recent results can make repeat checks faster. Prices still come from the provider websites, so you can continue there when you are ready to book."
         )
         ctk.CTkLabel(
@@ -1050,13 +1266,24 @@ def _duration_text(seconds):
     return f"{minutes // 60}h {minutes % 60}m"
 
 
-def _search_fact(summary):
+def _search_fact(summary, message=""):
     provider = summary.get("current_provider")
     total = summary.get("total_provider_searches", 0)
     cache_hits = summary.get("cache_hits", 0)
     live = summary.get("live_searches", 0)
+    completed = summary.get("provider_searches_completed", 0)
+    messages = [
+        "Checking live prices from trusted providers...",
+        "Comparing trusted local companies...",
+        "Looking for cheaper date combinations...",
+        "Checking flexible pickup times...",
+        "Searching another combination...",
+        "Finding the best value for your holiday...",
+    ]
     if cache_hits and cache_hits >= live:
         return "Reusing recent prices so you do not wait for the same checks again."
+    if total and completed:
+        return messages[completed % len(messages)]
     if provider and provider != "N/A":
         return f"Checking {provider} for the best confirmed price."
     if total:

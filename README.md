@@ -33,7 +33,7 @@ No additional providers are planned for Version 1.x. Future work focuses on usab
 2. Double-click `install_windows.bat` once.
 3. Double-click `start_app.bat`.
 4. Choose your dates, collection times and car preferences.
-5. Choose either `Compare Exact Dates` or `Find the Cheapest Holiday`.
+5. Choose `Quick Search`, `Smart Search`, or `Thorough Search`.
 6. Click `Find my car`.
 
 The app opens `results/report.html` automatically after a completed search.

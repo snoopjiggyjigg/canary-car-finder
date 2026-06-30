@@ -7,7 +7,7 @@ from reports import write_reports
 from search_cache import SearchCache, cache_mode_label
 
 
-def run_search(settings, mode, progress_callback=None, stop_callback=None):
+def run_search(settings, mode, progress_callback=None, stop_callback=None, pause_callback=None):
     providers = get_providers(settings)
     cache = SearchCache()
     plans = []
@@ -28,6 +28,15 @@ def run_search(settings, mode, progress_callback=None, stop_callback=None):
     for provider, requests in plans:
         live_requests = []
         for request in requests:
+            _wait_if_paused(pause_callback, stop_callback)
+            if stop_callback and stop_callback():
+                logging.info("Search stopped by user")
+                summary = _summary(settings, mode, len(providers), stats, started_at)
+                return rows, write_reports(
+                    rows,
+                    _progress("stopped", "Stopped", completed, total, "Search stopped by user", summary),
+                )
+
             cached = cache.get(provider.name, request, settings)
             if cached:
                 stats.update(_current_search(provider.name, request))
@@ -37,6 +46,7 @@ def run_search(settings, mode, progress_callback=None, stop_callback=None):
                 stats["cache_hits"] += 1
                 stats["provider_searches_completed"] = completed
                 stats["estimated_time_saved_seconds"] += _estimated_seconds_per_search(provider.name)
+                _update_best(stats, cached)
                 summary = _summary(settings, mode, len(providers), stats, started_at)
                 _emit_progress(
                     progress_callback,
@@ -63,6 +73,7 @@ def run_search(settings, mode, progress_callback=None, stop_callback=None):
             )
             provider.start()
             for index, request in enumerate(live_requests, start=1):
+                _wait_if_paused(pause_callback, stop_callback)
                 if stop_callback and stop_callback():
                     logging.info("Search stopped by user")
                     summary = _summary(settings, mode, len(providers), stats, started_at)
@@ -104,6 +115,7 @@ def run_search(settings, mode, progress_callback=None, stop_callback=None):
                 stats["live_searches"] += 1
                 stats["new_provider_searches"] = stats["live_searches"]
                 stats["provider_searches_completed"] = completed
+                _update_best(stats, result)
                 summary = _summary(settings, mode, len(providers), stats, started_at)
 
                 price = result.get("price")
@@ -205,12 +217,35 @@ def _initial_stats(settings, total, duplicates_removed):
         "current_provider": "N/A",
         "current_holiday": "N/A",
         "current_time_combination": "N/A",
+        "best_price_so_far": None,
+        "cheapest_provider_so_far": "N/A",
     }
 
 
 def _emit_progress(callback, completed, total, message, summary):
     if callback:
         callback(completed, total, message, summary)
+
+
+def _wait_if_paused(pause_callback, stop_callback):
+    if not pause_callback:
+        return
+    while pause_callback():
+        if stop_callback and stop_callback():
+            return
+        from time import sleep
+
+        sleep(0.2)
+
+
+def _update_best(stats, result):
+    if not result.get("success") or not result.get("price"):
+        return
+    price = float(result["price"])
+    best = stats.get("best_price_so_far")
+    if best is None or price < float(best):
+        stats["best_price_so_far"] = price
+        stats["cheapest_provider_so_far"] = result.get("provider", "N/A")
 
 
 def _route(request):
