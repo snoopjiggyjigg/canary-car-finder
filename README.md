@@ -1,66 +1,58 @@
-# Canary Car Finder v1.0
+# Canary Islands Car Hire Optimiser
 
-Local-only desktop tool. No hosting. No subscriptions. No cloud.
+Local Windows app for comparing trusted Canary Islands car hire prices. No hosting, no subscriptions, no cloud service.
 
-This version is focused on four trusted Canary Islands providers.
+Planning a holiday to the Canary Islands? Compare prices for one specific holiday, or let the app try lots of date, holiday-length and collection-time choices to help find the cheapest car hire option.
 
-## What it does
+## Trusted Providers
 
-- Runs a modern Windows desktop app
-- Lets you set:
-  - single pickup/return dates
-  - holiday optimiser departure/return window
-  - minimum/maximum trip length
-  - pickup/return times
-  - transmission preference
-  - headless or visible browser
-- Searches trusted Fuerteventura Airport providers
-- Finds and compares provider prices
-- Ranks the top 20 cheapest holiday combinations
-- Shows a summary dashboard, price calendar, and search statistics
-- Supports optional vehicle seat, transmission, and vehicle type filters
-- Shows live progress
-- Remembers the previous search automatically
-- Opens the HTML report when the search completes
-- Saves:
-  - HTML report
-  - CSV results
-  - Excel results
-  - logs
-  - debug screenshots if anything breaks
+The app intentionally supports only these four trusted providers:
 
-## How to use
+- PlusCar
+- AutoReisen
+- Cicar
+- Payless Car
+
+No additional providers are planned for Version 1.x. Future work focuses on usability, speed, clearer reports and better holiday planning rather than adding more companies.
+
+## What It Does
+
+- Runs as a Windows desktop app.
+- Lets you compare exact dates or search flexible holiday choices.
+- Checks collection and return times, including nearby times when you choose that option.
+- Shows live progress while prices are being checked.
+- Opens a clear HTML report when the search finishes.
+- Highlights a recommended booking and the 20 cheapest options.
+- Lets you narrow results by seats, transmission, car type, provider, price and holiday length.
+- Saves CSV and Excel exports with stable columns.
+- Remembers your previous choices automatically.
+
+## How To Use
 
 1. Clone or download this repository.
 2. Double-click `install_windows.bat` once.
 3. Double-click `start_app.bat`.
-4. Choose pickup/return dates and times.
-5. Choose **Single Search** or **Holiday Optimiser**.
-6. Click **Search**.
+4. Choose your dates, collection times and car preferences.
+5. Choose either `Compare Exact Dates` or `Find the Cheapest Holiday`.
+6. Click `Find my car`.
 
-Holiday Optimiser is the primary workflow. It searches every valid date combination between the earliest departure date and latest return date, within the selected minimum and maximum trip length. Results are ranked by total price and effective daily price.
-
-For the command-line workflow:
-
-```bash
-python cli.py --mode test
-```
+The app opens `results/report.html` automatically after a completed search.
 
 ## Results
 
-Open:
+The report is designed to answer one question first:
 
-`results/report.html`
+What should I book?
 
-The desktop app opens this report automatically after a completed search.
+It includes a recommended booking, the cheapest options, filters, price summaries, provider notes and the full price list.
 
-## Support link
+CSV and Excel exports are saved in `results/`.
 
-The "Buy me an Estrella" button uses the configurable `donation_url` in:
+## Support
 
-`config/app_config.json`
+The support button uses the configurable `donation_url` in `config/app_config.json`.
 
-## Windows packaging
+## Windows Packaging
 
 To create a distributable Windows build:
 
@@ -70,23 +62,9 @@ build_windows.bat
 
 The packaged application is written to:
 
-`release/CanaryCarFinder`
-
-## Current providers
-
-- PlusCar
-- AutoReisen
-- Cicar
-- Payless Car
-
-## v1 provider scope
-
-- PlusCar
-- AutoReisen
-- Cicar
-- Payless Car
-
-Canary Car Finder v1 intentionally supports only these four trusted providers. No additional providers are planned for v1.
+```text
+release/CanaryCarFinder
+```
 
 ## Roadmap
 

@@ -68,7 +68,9 @@ class CanaryCarFinderApp:
         ctk.set_default_color_theme("blue")
 
         self.root = ctk.CTk()
-        self.root.title("Canary Car Finder")
+        self.app_name = self.app_config["app_name"]
+        self.app_version = self.app_config["version"]
+        self.root.title(f"{self.app_name} {self.app_version}")
         self.root.geometry("1160x800")
         self.root.minsize(1040, 760)
         self.root.configure(fg_color=COLORS["sky"])
@@ -95,9 +97,12 @@ class CanaryCarFinderApp:
         self.visible_browser_var = ctk.BooleanVar(
             value=bool(self.user_settings.get("visible_browser", self.settings.visible_browser))
         )
-        self.status_var = ctk.StringVar(value="Ready for your next Canary trip")
+        self.status_var = ctk.StringVar(value="Planning a holiday to the Canary Islands?")
         self.detail_var = ctk.StringVar(
-            value="Tell us when you could travel and we will compare trusted local car hire prices."
+            value=(
+                "Compare prices from trusted local car hire companies, or let the app try lots of dates, "
+                "holiday lengths and collection times to help find the cheapest option."
+            )
         )
         self.count_var = ctk.StringVar(value="0 checked")
         self.fact_var = ctk.StringVar(value="Recent results can be reused to save you time.")
@@ -157,7 +162,7 @@ class CanaryCarFinderApp:
         brand.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(
             brand,
-            text="CC",
+            text="CI",
             width=40,
             height=40,
             corner_radius=10,
@@ -167,13 +172,15 @@ class CanaryCarFinderApp:
         ).grid(row=0, column=0, rowspan=2, padx=(0, 12), sticky="nw")
         ctk.CTkLabel(
             brand,
-            text="Canary Car Finder",
+            text="Canary Islands Car Hire Optimiser",
             text_color=COLORS["ink"],
-            font=ctk.CTkFont(size=22, weight="bold"),
+            font=ctk.CTkFont(size=18, weight="bold"),
+            wraplength=245,
+            justify="left",
         ).grid(row=0, column=1, sticky="w")
         ctk.CTkLabel(
             brand,
-            text="Trusted Canary car hire",
+            text="Trusted local car hire",
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=13),
         ).grid(row=1, column=1, sticky="w")
@@ -186,29 +193,29 @@ class CanaryCarFinderApp:
         self.date_help_var = ctk.StringVar()
         self.length_help_var = ctk.StringVar()
 
-        self._section_label(form, "Where will you collect the car?", 3)
+        self._section_label(form, "Car collection", 3)
         ctk.CTkLabel(
             form,
             text="Fuerteventura Airport",
             text_color=COLORS["ink"],
             fg_color="#fbfdfd",
             corner_radius=10,
-            height=42,
+            height=36,
             font=ctk.CTkFont(size=15, weight="bold"),
         ).grid(row=4, column=0, padx=24, pady=(0, 10), sticky="ew")
 
-        self._section_label(form, "When could you travel?", 5)
+        self._section_label(form, "Travel dates", 5)
         self._date_pair(form, 6)
-        self._section_label(form, "How many days away?", 7)
+        self._section_label(form, "Holiday length", 7)
         self._entry_pair(form, 8)
         action_frame = ctk.CTkFrame(sidebar, fg_color=COLORS["panel"], corner_radius=0)
-        action_frame.grid(row=1, column=0, padx=16, pady=(6, 8), sticky="ew")
+        action_frame.grid(row=1, column=0, padx=16, pady=(4, 6), sticky="ew")
         action_frame.grid_columnconfigure(0, weight=1)
 
         self.search_button = ctk.CTkButton(
             action_frame,
             text="Find my car",
-            height=52,
+            height=42,
             corner_radius=12,
             fg_color=COLORS["sun"],
             hover_color="#d99b2e",
@@ -216,12 +223,12 @@ class CanaryCarFinderApp:
             font=ctk.CTkFont(size=21, weight="bold"),
             command=self._start_search,
         )
-        self.search_button.grid(row=0, column=0, padx=8, pady=(0, 8), sticky="ew")
+        self.search_button.grid(row=0, column=0, padx=8, pady=(0, 6), sticky="ew")
 
         self.advanced_button = ctk.CTkButton(
             action_frame,
             text="More choices",
-            height=38,
+            height=34,
             fg_color="#edf6f7",
             hover_color=COLORS["sand"],
             text_color=COLORS["deep_ocean"],
@@ -345,7 +352,7 @@ class CanaryCarFinderApp:
 
         ctk.CTkLabel(
             support,
-            text="Enjoyed using it?",
+            text="Enjoying the app?",
             text_color=COLORS["ink"],
             font=ctk.CTkFont(size=16, weight="bold"),
         ).grid(row=0, column=0, padx=16, pady=(12, 6), sticky="w")
@@ -361,7 +368,7 @@ class CanaryCarFinderApp:
             support,
             text="Buy Jamie an Estrella",
             width=0,
-            height=34,
+            height=30,
             fg_color=COLORS["coral"],
             hover_color="#bf574b",
             command=self._open_donation,
@@ -372,10 +379,9 @@ class CanaryCarFinderApp:
         footer.grid(row=1, column=0, sticky="ew")
         footer.grid_columnconfigure(1, weight=1)
 
-        version = self.app_config.get("version", "1.0.0")
         ctk.CTkLabel(
             footer,
-            text=f"Canary Car Finder v{version}",
+            text=f"{self.app_name} {self.app_version}",
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=12),
         ).grid(row=0, column=0, padx=28, pady=(0, 16), sticky="w")
@@ -426,7 +432,7 @@ class CanaryCarFinderApp:
         }
         for index, value in enumerate(SEARCH_PRESETS):
             option = ctk.CTkFrame(frame, fg_color="#f8fbfb", border_color=COLORS["line"], border_width=1, corner_radius=10)
-            option.grid(row=index, column=0, padx=0, pady=3, sticky="ew")
+            option.grid(row=index, column=0, padx=0, pady=2, sticky="ew")
             option.grid_columnconfigure(0, weight=1)
             radio = ctk.CTkRadioButton(
                 option,
@@ -441,7 +447,7 @@ class CanaryCarFinderApp:
                 font=ctk.CTkFont(size=15, weight="bold"),
                 text_color=COLORS["ink"],
             )
-            radio.grid(row=0, column=0, padx=12, pady=(7, 1), sticky="w")
+            radio.grid(row=0, column=0, padx=12, pady=(5, 0), sticky="w")
             ctk.CTkLabel(
                 option,
                 text=subtitles[value],
@@ -450,7 +456,7 @@ class CanaryCarFinderApp:
                 wraplength=230,
                 justify="left",
                 anchor="w",
-            ).grid(row=1, column=0, padx=(42, 10), pady=(0, 7), sticky="ew")
+            ).grid(row=1, column=0, padx=(42, 10), pady=(0, 5), sticky="ew")
 
     def _section_label(self, parent, label, row):
         ctk.CTkLabel(
@@ -458,7 +464,7 @@ class CanaryCarFinderApp:
             text=label,
             text_color=COLORS["ocean"],
             font=ctk.CTkFont(size=15, weight="bold"),
-        ).grid(row=row, column=0, padx=24, pady=(8, 5), sticky="w")
+        ).grid(row=row, column=0, padx=24, pady=(6, 4), sticky="w")
 
     def _date_picker(self, parent, label, iso_variable, display_variable, row):
         ctk.CTkLabel(parent, text=label, text_color=COLORS["ink"], font=ctk.CTkFont(size=13, weight="bold")).grid(
@@ -495,7 +501,7 @@ class CanaryCarFinderApp:
         ctk.CTkButton(
             parent,
             textvariable=display_variable,
-            height=38,
+            height=30,
             corner_radius=10,
             fg_color="#fbfdfd",
             hover_color=COLORS["sand"],
@@ -523,7 +529,7 @@ class CanaryCarFinderApp:
         ctk.CTkEntry(
             parent,
             textvariable=variable,
-            height=38,
+            height=34,
             corner_radius=10,
             border_color=COLORS["line"],
             fg_color="#fbfdfd",
@@ -789,7 +795,7 @@ class CanaryCarFinderApp:
 
     def _show_about(self):
         dialog = ctk.CTkToplevel(self.root)
-        dialog.title("About Canary Car Finder")
+        dialog.title(f"About {self.app_name}")
         dialog.geometry("520x460")
         dialog.resizable(False, False)
         dialog.configure(fg_color=COLORS["sky"])
@@ -801,13 +807,13 @@ class CanaryCarFinderApp:
 
         ctk.CTkLabel(
             panel,
-            text="Canary Car Finder",
+            text=self.app_name,
             text_color=COLORS["ink"],
             font=ctk.CTkFont(size=28, weight="bold"),
         ).pack(anchor="w", padx=24, pady=(24, 6))
         ctk.CTkLabel(
             panel,
-            text=f"Version {self.app_config.get('version', '1.0.0')}",
+            text=f"Version {self.app_version}",
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=14),
         ).pack(anchor="w", padx=24)
@@ -940,7 +946,7 @@ class CanaryCarFinderApp:
 
     def _confirm_search(self, estimate):
         message = (
-            "Canary Car Finder is ready to check prices.\n\n"
+            f"{self.app_name} is ready to check prices.\n\n"
             f"{estimate.get('date_combinations_generated', 0)} date choices\n"
             f"{estimate.get('time_combinations_generated', 0)} collection and return time choices\n"
             f"{estimate.get('provider_searches_estimated', 0)} prices to check\n\n"
@@ -965,7 +971,7 @@ class CanaryCarFinderApp:
 
     def _show_help(self):
         dialog = ctk.CTkToplevel(self.root)
-        dialog.title("How Canary Car Finder Helps")
+        dialog.title(f"How {self.app_name} Helps")
         dialog.geometry("620x560")
         dialog.configure(fg_color=COLORS["sky"])
         dialog.transient(self.root)
@@ -982,7 +988,7 @@ class CanaryCarFinderApp:
             font=ctk.CTkFont(size=26, weight="bold"),
         ).grid(row=0, column=0, padx=22, pady=(22, 12), sticky="w")
         help_text = (
-            "Canary Car Finder checks PlusCar, AutoReisen, Cicar and Payless Car because they are trusted local companies.\n\n"
+            f"{self.app_name} checks PlusCar, AutoReisen, Cicar and Payless Car because they are trusted local companies.\n\n"
             "If your dates are fixed, choose Compare Exact Dates and we will check that one holiday.\n\n"
             "If your plans are flexible, choose Find the Cheapest Holiday. Moving your holiday by a day or two, or collecting the car slightly earlier or later, can sometimes save money.\n\n"
             "Recent results can make repeat checks faster. Prices still come from the provider websites, so you can continue there when you are ready to book."

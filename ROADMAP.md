@@ -1,8 +1,8 @@
-# Canary Car Finder Roadmap
+# Canary Islands Car Hire Optimiser Roadmap
 
 ## Version 1.0 Architecture
 
-Canary Car Finder is a local-only Python application for comparing trusted car hire providers at Fuerteventura Airport.
+Canary Islands Car Hire Optimiser is a local-only Python application for comparing trusted car hire providers at Fuerteventura Airport.
 
 The app is organised around a provider-based architecture:
 
@@ -81,7 +81,7 @@ The goal is not to scrape every rental company. The goal is to make a small, tru
 
 ### Trusted Providers Only
 
-Car hire pricing is sensitive to fees, insurance terms, deposits, fuel rules, availability, and booking conditions. Canary Car Finder intentionally includes only providers that are trusted enough to compare directly and consistently.
+Car hire pricing is sensitive to fees, insurance terms, deposits, fuel rules, availability, and booking conditions. Canary Islands Car Hire Optimiser intentionally includes only providers that are trusted enough to compare directly and consistently.
 
 A smaller provider set keeps results understandable. It also makes it easier to notice when a provider changes its website, pricing structure, or booking flow.
 

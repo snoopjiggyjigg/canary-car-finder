@@ -1,5 +1,5 @@
 @echo off
-title Canary Car Finder - Install
+title Canary Islands Car Hire Optimiser - Install
 cd /d "%~dp0"
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt

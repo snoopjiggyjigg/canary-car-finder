@@ -57,6 +57,8 @@ def write_reports(rows, progress=None):
 def _render_html(df, progress):
     refresh = "<meta http-equiv='refresh' content='5'>" if _is_running(progress) else ""
     app_config = load_app_config()
+    app_name = app_config["app_name"]
+    app_version = app_config["version"]
     return f"""
     <!doctype html>
     <html lang='en'>
@@ -64,7 +66,7 @@ def _render_html(df, progress):
       <meta charset='utf-8'>
       <meta name='viewport' content='width=device-width, initial-scale=1'>
       {refresh}
-      <title>Canary Car Finder</title>
+      <title>{escape(app_name)}</title>
       <style>
         :root {{
           --ink:#16211f;
@@ -121,6 +123,8 @@ def _render_html(df, progress):
         .winner .eyebrow {{ color:#b9e4dc; font-size:13px; font-weight:900; text-transform:uppercase; }}
         .winner h2 {{ margin:10px 0 8px; font-size:30px; letter-spacing:0; }}
         .winner-meta {{ color:#d9e8e4; line-height:1.55; }}
+        .reason-list {{ margin:12px 0 0; padding:0; list-style:none; color:var(--muted); line-height:1.7; }}
+        .reason-list li:before {{ content:"✓"; color:var(--accent); font-weight:950; margin-right:8px; }}
         .winner-price {{ font-size:54px; font-weight:950; margin-top:18px; }}
         .side-panel {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:20px; }}
         .side-panel h2 {{ margin:0 0 12px; font-size:20px; }}
@@ -189,9 +193,9 @@ def _render_html(df, progress):
       <main class='shell'>
         <div class='topbar'>
           <div class='brand'>
-            <div class='mark'>CC</div>
+            <div class='mark'>CI</div>
             <div>
-              <h1>Canary Car Finder</h1>
+              <h1>{escape(app_name)}</h1>
               <p class='subtitle'>Clear recommendations from four trusted Canary Islands car hire companies.</p>
             </div>
           </div>
@@ -222,6 +226,7 @@ def _render_html(df, progress):
         {_final_search_summary_html(df, progress)}
         {_support_html(df, app_config)}
         {_holiday_home_html(app_config)}
+        <footer class='subtitle' style='margin-top:18px'>{escape(app_name)} {escape(app_version)}</footer>
       </main>
       {_filter_script(df)}
     </body>
@@ -548,7 +553,7 @@ def _hero_html(df):
         </div>
         <aside class='side-panel'>
           <h2>Why this was chosen</h2>
-          <p>{_recommendation_reason(best, successful)}</p>
+          {_recommendation_reason(best, successful)}
         </aside>
       </section>
     """
@@ -687,19 +692,20 @@ def _booking_info(row):
 def _recommendation_reason(best, successful):
     reasons = ["Cheapest overall"]
     if not successful.empty and best.get("effective_daily") == successful["effective_daily"].min():
-        reasons.append("best daily price")
+        reasons.append("Best value per day")
     transmission = best.get("_transmission")
     seats = best.get("_seats")
     vehicle_type = best.get("_vehicle_type")
     if not pd.isna(transmission) and transmission:
-        reasons.append(str(transmission).lower())
+        reasons.append(str(transmission))
     if not pd.isna(seats) and seats:
         reasons.append(f"{int(seats)} seats")
     if not pd.isna(vehicle_type) and vehicle_type:
-        reasons.append(str(vehicle_type).lower())
+        reasons.append(str(vehicle_type))
     if _times_match_request(best):
-        reasons.append("closest match to requested times")
-    return escape(", ".join(reasons).capitalize() + ".")
+        reasons.append("Closest match to your requested times")
+    items = "".join(f"<li>{escape(reason)}</li>" for reason in reasons)
+    return f"<ul class='reason-list'>{items}</ul>"
 
 
 def _times_match_request(row):
@@ -796,10 +802,10 @@ def _support_html(df, app_config):
     return f"""
       <section class='support'>
         <div>
-          <h2>🍺 Enjoyed using Canary Car Finder?</h2>
-          <p>This app has:</p>
-          <p>No adverts<br>No subscriptions<br>No affiliate links</p>
-          <p>If it helped you save money on your holiday and you would like to support future improvements, buying me an Estrella is always appreciated.</p>
+          <h2>🍺 Enjoying Canary Islands Car Hire Optimiser?</h2>
+          <p>This project is completely free to use.</p>
+          <p>There are:<br>No adverts<br>No subscriptions<br>No affiliate links</p>
+          <p>If the app has helped you save money on your holiday and you would like to support future improvements, you can buy me an Estrella.</p>
         </div>
         {button}
       </section>
@@ -814,9 +820,10 @@ def _holiday_home_html(app_config):
       <section class='support secondary'>
         <div>
           <h2>🏝 Staying in Fuerteventura?</h2>
-          <p>If you are still looking for accommodation, take a look at our holiday home in Caleta de Fuste.</p>
+          <p>If you are still looking for somewhere to stay, take a look at our holiday home in Caleta de Fuste.</p>
+          <p>Whether you are planning a relaxing beach holiday or exploring the island by car, we would love to welcome you.</p>
         </div>
-        <a href='{escape(str(url), quote=True)}' target='_blank' rel='noopener noreferrer'>View Holiday Home</a>
+        <a href='{escape(str(url), quote=True)}' target='_blank' rel='noopener noreferrer'>View Our Holiday Home</a>
       </section>
     """
 

@@ -1,3 +1,12 @@
+# v1.4.0
+
+- Renamed the app to Canary Islands Car Hire Optimiser.
+- Centralised app name and version display.
+- Improved first-screen guidance for holidaymakers.
+- Improved report recommendation wording and presentation.
+- Updated support and holiday-home links.
+- Polished user-facing wording across the desktop app and report.
+
 # v1.1.0
 
 - Added polished CustomTkinter Windows desktop app
