@@ -9,6 +9,7 @@ from .base import CarProvider
 RESULTS = Path("results")
 DEBUG = RESULTS / "debug"
 EURO = chr(8364)
+HOME_URL = "https://www.pluscarcanarias.com/en/home/"
 
 DAILY_RE = re.compile(r"([0-9]+(?:[,.][0-9]{2})?)\s*" + re.escape(EURO) + r"\s*for\s*day", re.I)
 TOTAL_DAYS_RE = re.compile(
@@ -54,7 +55,7 @@ class PlusCarProvider(CarProvider):
             self.playwright.stop()
 
     def go_home(self):
-        self.page.goto("https://www.pluscarcanarias.com/en/home/", wait_until="domcontentloaded")
+        self.page.goto(HOME_URL, wait_until="domcontentloaded")
         self.page.wait_for_timeout(800)
         self.accept_cookies()
         self.page.get_by_label("Pick up at Office").select_option(self.settings.pluscar_airport_option)
@@ -142,7 +143,7 @@ class PlusCarProvider(CarProvider):
                 daily=daily,
                 price=price,
                 vehicles_found=len(vehicles),
-                url=self.page.url,
+                url=HOME_URL,
                 status=f"OK {EURO}{price:.2f}" if price else "No vehicle price found",
             )
         except Exception as exc:
@@ -163,7 +164,7 @@ class PlusCarProvider(CarProvider):
                 daily=None,
                 price=None,
                 vehicles_found=0,
-                url=self.page.url if self.page else "",
+                url=HOME_URL,
                 status=f"ERROR: {type(exc).__name__}: {str(exc)[:160]}",
             )
 

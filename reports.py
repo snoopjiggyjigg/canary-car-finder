@@ -130,6 +130,7 @@ def _render_html(df, progress):
         .best-table {{ overflow:auto; border:1px solid var(--line); border-radius:8px; background:white; box-shadow:0 14px 36px rgba(29, 45, 43, .12); margin-bottom:28px; }}
         .best-table table {{ min-width:1060px; }}
         .book {{ display:inline-block; background:var(--accent); color:white; text-decoration:none; font-weight:900; padding:8px 11px; border-radius:8px; white-space:nowrap; }}
+        .book-note {{ margin-top:7px; color:var(--muted); font-size:12px; line-height:1.4; }}
         .time-pair {{ display:inline-block; line-height:1.35; font-size:13px; color:var(--muted); }}
         .source {{ display:inline-block; border-radius:999px; padding:5px 9px; font-size:11px; font-weight:900; letter-spacing:.02em; }}
         .source.live {{ background:#e1f4ea; color:#0d6b3a; }}
@@ -167,6 +168,8 @@ def _render_html(df, progress):
         .support h2 {{ margin:0 0 6px; font-size:22px; }}
         .support p {{ margin:0; color:var(--muted); line-height:1.5; }}
         .support a {{ display:inline-block; background:var(--coral); color:white; text-decoration:none; font-weight:900; padding:12px 16px; border-radius:8px; white-space:nowrap; }}
+        .support.secondary {{ margin-top:14px; background:#f5faf9; border-color:var(--line); }}
+        .support.secondary a {{ background:var(--accent); }}
         .table-wrap {{ overflow:auto; border:1px solid var(--line); border-radius:8px; background:white; }}
         table {{ border-collapse:collapse; width:100%; min-width:980px; }}
         th, td {{ border-bottom:1px solid var(--line); padding:13px; text-align:left; font-size:14px; vertical-align:top; }}
@@ -194,10 +197,10 @@ def _render_html(df, progress):
           </div>
           {_status_pill(progress)}
         </div>
-        {_hero_html(df)}
-        {_filter_bar_html(df)}
-        {_best_holidays_html(df)}
         {_progress_html(progress)}
+        {_hero_html(df)}
+        {_best_holidays_html(df)}
+        {_filter_bar_html(df)}
         {_holiday_summary_html(df, progress)}
         {_stats_html(df)}
         {_price_calendar_html(df)}
@@ -216,7 +219,9 @@ def _render_html(df, progress):
         <div class='table-wrap'>
           {_table_html(df)}
         </div>
+        {_final_search_summary_html(df, progress)}
         {_support_html(df, app_config)}
+        {_holiday_home_html(app_config)}
       </main>
       {_filter_script(df)}
     </body>
@@ -522,13 +527,13 @@ def _hero_html(df):
           <section class='hero-card'>
             <div class='winner'>
               <div>
-                <div class='eyebrow'>Search in progress</div>
+                <div class='eyebrow'>Recommended Booking</div>
                 <h2>No confirmed prices yet</h2>
                 <p class='winner-meta'>Results will appear here as each provider completes a search.</p>
               </div>
               <div class='winner-price'>--</div>
             </div>
-            <aside class='side-panel'><h2>Dashboard</h2><p>The report refreshes while searches are running and keeps CSV/XLSX exports unchanged.</p></aside>
+            <aside class='side-panel'><h2>Why this matters</h2><p>The report refreshes while searches are running and keeps CSV/XLSX exports unchanged.</p></aside>
           </section>
         """
 
@@ -537,15 +542,15 @@ def _hero_html(df):
       <section class='hero-card'>
         <div class='winner'>
           <div>
-            <div class='eyebrow'>Cheapest confirmed option</div>
+            <div class='eyebrow'>Recommended Booking</div>
             <h2>{escape(_text(best.get("vehicle"), "Vehicle unavailable"))}</h2>
             <p class='winner-meta'>{escape(_text(best.get("provider"), "Provider"))} from {_date_text(best.get("pickup"))} {_time_html(best, "pickup")} to {_date_text(best.get("dropoff"))} {_time_html(best, "return")}</p>
           </div>
           <div class='winner-price'>{_format_euro(best.get("price"))}</div>
         </div>
         <aside class='side-panel'>
-          <h2>Why this leads</h2>
-          <p>Cards below compare every successful search against this cheapest option, with higher prices called out immediately.</p>
+          <h2>Why this was chosen</h2>
+          <p>{_recommendation_reason(best, successful)}</p>
         </aside>
       </section>
     """
@@ -659,7 +664,50 @@ def _booking_link(row):
     url = row.get("url")
     if pd.isna(url) or not url:
         return ""
-    return f"<a class='book' href='{escape(str(url), quote=True)}'>Book</a>"
+    label, note = _booking_info(row)
+    return (
+        f"<a class='book' href='{escape(str(url), quote=True)}' target='_blank' rel='noopener noreferrer'>{escape(label)}</a>"
+        f"<div class='book-note'>{escape(note)}</div>"
+    )
+
+
+def _booking_info(row):
+    provider = _text(row.get("provider"), "")
+    notes = {
+        "PlusCar": "PlusCar uses an interactive search page. Your search details are shown above.",
+        "AutoReisen": "AutoReisen prices are searched directly, but booking pages may not preserve submitted form state.",
+        "Cicar": "This provider does not support direct booking links. Your search details are shown above.",
+        "Payless Car": "This provider does not support direct booking links. Your search details are shown above.",
+    }
+    return "Continue on Provider", notes.get(
+        provider,
+        "This provider may not support direct booking links. Your search details are shown above.",
+    )
+
+
+def _recommendation_reason(best, successful):
+    reasons = ["Cheapest overall"]
+    if not successful.empty and best.get("effective_daily") == successful["effective_daily"].min():
+        reasons.append("best daily price")
+    transmission = best.get("_transmission")
+    seats = best.get("_seats")
+    vehicle_type = best.get("_vehicle_type")
+    if not pd.isna(transmission) and transmission:
+        reasons.append(str(transmission).lower())
+    if not pd.isna(seats) and seats:
+        reasons.append(f"{int(seats)} seats")
+    if not pd.isna(vehicle_type) and vehicle_type:
+        reasons.append(str(vehicle_type).lower())
+    if _times_match_request(best):
+        reasons.append("closest match to requested times")
+    return escape(", ".join(reasons).capitalize() + ".")
+
+
+def _times_match_request(row):
+    return (
+        _text(row.get("requested_pickup_time"), "") == _text(row.get("actual_pickup_time"), "")
+        and _text(row.get("requested_return_time"), "") == _text(row.get("actual_return_time"), "")
+    )
 
 
 def _anchor(row):
@@ -703,27 +751,73 @@ def _table_html(df):
     return table_df.to_html(index=False, escape=False)
 
 
+def _final_search_summary_html(df, progress):
+    summary = (progress or {}).get("summary") or {}
+    if not summary:
+        return ""
+    duration = summary.get("search_duration_seconds") or summary.get("elapsed_seconds")
+    completed = int(summary.get("provider_searches_completed", len(df)) or 0)
+    speed = None
+    if duration and completed:
+        try:
+            speed = float(duration) / completed
+        except (TypeError, ValueError, ZeroDivisionError):
+            speed = None
+    manual_saved = summary.get("estimated_time_saved_seconds")
+    provider_count = summary.get("provider_count", 4)
+    return f"""
+      <div class='section-title'><h2>Search Summary</h2><span class='subtitle'>What Canary Car Finder checked for you</span></div>
+      <section class='stats'>
+        {_stat("Holiday Combinations", str(summary.get("date_combinations_generated", 0)))}
+        {_stat("Time Combinations", str(summary.get("time_combinations_generated", 0)))}
+        {_stat("Duplicates Removed", str(summary.get("duplicate_searches_removed", 0)))}
+        {_stat("Provider Searches", str(summary.get("total_provider_searches", completed)))}
+        {_stat("Browser Sessions", str(summary.get("browser_sessions_opened", 0)))}
+        {_stat("Cache Hits", str(summary.get("cache_hits", 0)))}
+        {_stat("Time Taken", _duration(duration))}
+        {_stat("Average Search Speed", f"{speed:.1f}s per price" if speed else "N/A")}
+        {_stat("Estimated Manual Time Saved", _duration(manual_saved))}
+      </section>
+      <aside class='side-panel'>
+        <h2>Real prices, less legwork</h2>
+        <p>This search checked {completed} real prices across {provider_count} trusted providers so you did not have to.</p>
+      </aside>
+    """
+
+
 def _support_html(df, app_config):
     donation_url = app_config.get("donation_url")
     button = ""
     if donation_url:
-        button = f"<a href='{escape(str(donation_url), quote=True)}'>Buy me an Estrella</a>"
-
-    message = (
-        "If Canary Car Finder helped you find a cheaper hire car, consider buying me an Estrella. "
-        "Every donation helps keep the application free and supports future improvements."
-    )
-    saving = _saving_vs_most_expensive(df)
-    if saving and saving > 0.009:
-        message = f"You saved {_format_euro(saving)} today. Fancy buying me one Estrella?"
+        button = (
+            f"<a href='{escape(str(donation_url), quote=True)}' target='_blank' rel='noopener noreferrer'>"
+            "🍺 Buy Jamie an Estrella</a>"
+        )
 
     return f"""
       <section class='support'>
         <div>
-          <h2>Saved money?</h2>
-          <p>{message}</p>
+          <h2>🍺 Enjoyed using Canary Car Hire Optimiser?</h2>
+          <p>This app has:</p>
+          <p>No adverts<br>No subscriptions<br>No affiliate links</p>
+          <p>If it helped you save money on your holiday and you would like to support future improvements, buying me an Estrella is always appreciated.</p>
         </div>
         {button}
+      </section>
+    """
+
+
+def _holiday_home_html(app_config):
+    url = app_config.get("holiday_home_url")
+    if not url:
+        return ""
+    return f"""
+      <section class='support secondary'>
+        <div>
+          <h2>🏝 Staying in Fuerteventura?</h2>
+          <p>If you are still looking for accommodation, take a look at our holiday home in Caleta de Fuste.</p>
+        </div>
+        <a href='{escape(str(url), quote=True)}' target='_blank' rel='noopener noreferrer'>View Holiday Home</a>
       </section>
     """
 
@@ -996,7 +1090,7 @@ def _filter_script(df):
               <td>${{money(row.price)}}</td>
               <td>${{money(row.daily)}}</td>
               <td>${{saving && saving > 0.009 ? money(saving) : 'N/A'}}</td>
-              <td>${{row.url ? `<a class="book" href="${{escapeAttr(row.url)}}">Book</a>` : ''}}</td>
+              <td>${{bookingHtml(row)}}</td>
             </tr>`;
           }}).join('');
         }};
@@ -1092,6 +1186,9 @@ def _filter_script(df):
         const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[char]));
         const escapeAttr = value => escapeHtml(value).replace(/`/g, '&#96;');
         const timeHtml = (requested, actual) => `<span class="time-pair">Requested ${{escapeHtml(requested || 'N/A')}}<br>Actual searched ${{escapeHtml(actual || 'N/A')}}</span>`;
+        const bookingHtml = row => row.url
+          ? `<a class="book" href="${{escapeAttr(row.url)}}" target="_blank" rel="noopener noreferrer">${{escapeHtml(row.bookingLabel)}}</a><div class="book-note">${{escapeHtml(row.bookingNote)}}</div>`
+          : '';
         Object.values(controls).forEach(control => control?.addEventListener('input', applyFilters));
         Object.values(controls).forEach(control => control?.addEventListener('change', applyFilters));
         applyFilters();
@@ -1132,6 +1229,8 @@ def _filter_rows(df):
                 "requestedReturnTime": _text(row.get("requested_return_time"), _text(row.get("return_time"), "")),
                 "actualReturnTime": _text(row.get("actual_return_time"), _text(row.get("return_time"), "")),
                 "url": "" if pd.isna(row.get("url")) else str(row.get("url")),
+                "bookingLabel": _booking_info(row)[0],
+                "bookingNote": _booking_info(row)[1],
             }
         )
     return rows
