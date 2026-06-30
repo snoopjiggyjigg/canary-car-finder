@@ -5,7 +5,9 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
+from app_config import APP_NAME
 
+app_name = APP_NAME
 playwright_cache = Path(os.environ.get("LOCALAPPDATA", "")) / "ms-playwright"
 
 datas = [
@@ -41,7 +43,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="CanaryCarFinder",
+    name=app_name,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -61,5 +63,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="CanaryCarFinder",
+    name=app_name,
 )

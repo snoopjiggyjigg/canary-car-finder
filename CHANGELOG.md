@@ -10,6 +10,7 @@
 - Added clearer runtime estimates for long searches.
 - Added a live search dashboard with pause and stop controls.
 - Improved recommendation badges in the HTML report.
+- Improved the Windows release build so `build_windows.bat` creates a complete versioned release folder and ZIP.
 
 # v1.1.0
 

@@ -63,8 +63,10 @@ build_windows.bat
 The packaged application is written to:
 
 ```text
-release/CanaryCarFinder
+release/Canary-Islands-Car-Hire-Optimiser-v1.4.0/
 ```
+
+The build script reads the version from `app_config.py`, validates the generated executable, and creates a matching ZIP file automatically.
 
 ## Roadmap
 
