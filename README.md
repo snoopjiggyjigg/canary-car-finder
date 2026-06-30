@@ -63,10 +63,34 @@ build_windows.bat
 The packaged application is written to:
 
 ```text
-release/Canary-Islands-Car-Hire-Optimiser-v1.4.0/
+release/Canary-Islands-Car-Hire-Optimiser-v<version>/
 ```
 
-The build script reads the version from `app_config.py`, validates the generated executable, and creates a matching ZIP file automatically.
+The build script reads the version from `app_config.py`, validates the providers, validates the generated executable, and creates a matching ZIP file automatically.
+
+## Provider Validation
+
+Before every release, run:
+
+```text
+build_windows.bat
+```
+
+The build process automatically runs `provider_health_check.py` before packaging. It checks PlusCar, AutoReisen, Cicar and Payless Car using a standard Fuerteventura Airport search.
+
+The validation confirms that each provider opens, completes a search, finds at least one vehicle, extracts a price and returns a booking URL. The HTML report is saved to:
+
+```text
+results/provider_health_report.html
+```
+
+If a provider fails, diagnostics are saved under:
+
+```text
+results/debug/<provider>/<timestamp>/
+```
+
+The release build pauses and asks whether to continue. For public releases, treat any provider failure as a release blocker unless you have manually confirmed the issue is temporary or external.
 
 ## Roadmap
 

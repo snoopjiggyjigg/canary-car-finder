@@ -41,6 +41,41 @@ try {
     $exePath = Join-Path $releaseFolder "$appName.exe"
 
     Write-Host "Building $appName $versionTag" -ForegroundColor Cyan
+
+    Write-Host "Running provider validation suite..."
+    & python provider_health_check.py
+    $healthExitCode = $LASTEXITCODE
+    if ($healthExitCode -ne 0) {
+        $failedCount = "One or more"
+        $summaryPath = Join-Path $PSScriptRoot "results\provider_health_summary.json"
+        if (Test-Path -LiteralPath $summaryPath) {
+            try {
+                $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
+                $failedCount = [string]$summary.failed
+            }
+            catch {
+                $failedCount = "One or more"
+            }
+        }
+        Write-Host ""
+        Write-Host "WARNING" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "$failedCount provider(s) failed validation." -ForegroundColor Yellow
+        Write-Host "Release build has been paused." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Review:" -ForegroundColor Yellow
+        Write-Host (Join-Path $PSScriptRoot "results\debug") -ForegroundColor Yellow
+        Write-Host ""
+        if ($NoPause) {
+            Stop-Build "Provider validation failed and interactive confirmation is disabled."
+        }
+        $continueBuild = Read-Host "Continue anyway? [Y/N]"
+        if ($continueBuild -notmatch "^[Yy]$") {
+            Stop-Build "Release build cancelled because provider validation failed."
+        }
+        Write-Host "Continuing build despite provider validation failure..." -ForegroundColor Yellow
+    }
+
     Write-Host "Cleaning old build folders..."
     Remove-BuildPath (Join-Path $PSScriptRoot "build")
     Remove-BuildPath $distRoot

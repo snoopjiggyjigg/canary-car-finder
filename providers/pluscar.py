@@ -9,11 +9,19 @@ from .base import CarProvider
 RESULTS = Path("results")
 DEBUG = RESULTS / "debug"
 EURO = chr(8364)
-HOME_URL = "https://www.pluscarcanarias.com/en/home/"
+HOME_URL = "https://www.pluscarcanarias.com/inicio/"
+RESULTS_PATH = "/vehiculos-disponibles-v2/"
 
-DAILY_RE = re.compile(r"([0-9]+(?:[,.][0-9]{2})?)\s*" + re.escape(EURO) + r"\s*for\s*day", re.I)
+DAILY_RE = re.compile(
+    r"([0-9]+(?:[,.][0-9]{2})?)\s*"
+    + re.escape(EURO)
+    + r"\s*(?:for\s*day|por\s*d[ií]a|/\s*d[ií]a)",
+    re.I,
+)
 TOTAL_DAYS_RE = re.compile(
-    r"([0-9]+(?:[,.][0-9]{2})?)\s*" + re.escape(EURO) + r"\s*for\s*[0-9]+\s*days?",
+    r"([0-9]+(?:[,.][0-9]{2})?)\s*"
+    + re.escape(EURO)
+    + r"\s*(?:for|por)\s*[0-9]+\s*(?:days?|d[ií]as?)",
     re.I,
 )
 
@@ -58,7 +66,7 @@ class PlusCarProvider(CarProvider):
         self.page.goto(HOME_URL, wait_until="domcontentloaded")
         self.page.wait_for_timeout(800)
         self.accept_cookies()
-        self.page.get_by_label("Pick up at Office").select_option(self.settings.pluscar_airport_option)
+        self.page.locator("#oficina_recogida").select_option(self.settings.pluscar_airport_option)
 
     def accept_cookies(self):
         for name in ["Permitir todas", re.compile("permitir todas", re.I), re.compile("accept|allow", re.I)]:
@@ -69,7 +77,7 @@ class PlusCarProvider(CarProvider):
             except Exception:
                 pass
 
-    def scrape_vehicles(self):
+    def scrape_vehicles(self, rental_days=None):
         vehicles = []
         cards = self.page.locator("article.swi_product")
         for i in range(cards.count()):
@@ -93,6 +101,8 @@ class PlusCarProvider(CarProvider):
                     daily = money(daily_match.group(1))
                 if total_match:
                     total = money(total_match.group(1))
+                if total is None and daily is not None and rental_days:
+                    total = round(daily * rental_days, 2)
 
                 if total is not None:
                     vehicles.append(
@@ -110,24 +120,25 @@ class PlusCarProvider(CarProvider):
     def search(self, pickup, dropoff, pickup_time, return_time, index):
         days_elapsed = (dropoff - pickup).days
         try:
-            if "/en/home" not in self.page.url:
+            if "/inicio" not in self.page.url:
                 self.go_home()
 
-            self.page.get_by_role("textbox", name="Pick-up date").fill(pickup.isoformat())
-            self.page.get_by_label("Hora recogida").select_option(pickup_time)
+            self.page.locator("#fecha_inicio").fill(pickup.isoformat())
+            self.page.locator("#hora_inicio").select_option(pickup_time)
             try:
                 self.page.get_by_text("+").click(timeout=1500)
             except Exception:
                 pass
-            self.page.get_by_role("textbox", name="Return date").fill(dropoff.isoformat())
+            self.page.locator("#fecha_fin").fill(dropoff.isoformat())
             self.page.locator("#hora_fin").select_option(return_time)
             self.page.screenshot(path=str(DEBUG / f"{index:03d}_filled.png"), full_page=True)
-            self.page.get_by_role("button", name="Search").click()
+            self.page.locator(".swi_select_ofi_btn").click()
+            self._validate_results_page(index)
             self.page.locator("article.swi_product").first.wait_for(timeout=20000)
             self.page.screenshot(path=str(DEBUG / f"{index:03d}_results.png"), full_page=True)
             (DEBUG / f"{index:03d}_results.html").write_text(self.page.content(), encoding="utf-8")
 
-            vehicles = self.scrape_vehicles()
+            vehicles = self.scrape_vehicles(self._provider_rental_days())
             best = vehicles[0] if vehicles else None
             price = best["price"] if best else None
             daily = best["daily_price"] if best else None
@@ -143,7 +154,7 @@ class PlusCarProvider(CarProvider):
                 daily=daily,
                 price=price,
                 vehicles_found=len(vehicles),
-                url=HOME_URL,
+                url=self.page.url,
                 status=f"OK {EURO}{price:.2f}" if price else "No vehicle price found",
             )
         except Exception as exc:
@@ -164,9 +175,42 @@ class PlusCarProvider(CarProvider):
                 daily=None,
                 price=None,
                 vehicles_found=0,
-                url=HOME_URL,
+                url=self.page.url if self.page else HOME_URL,
                 status=f"ERROR: {type(exc).__name__}: {str(exc)[:160]}",
             )
+
+    def _validate_results_page(self, index):
+        try:
+            self.page.wait_for_url(f"**{RESULTS_PATH}", timeout=12000)
+        except Exception:
+            self._save_unexpected_url_debug(index)
+            raise RuntimeError(f"PlusCar did not reach expected results page. Final URL: {self.page.url}")
+
+    def _save_unexpected_url_debug(self, index):
+        prefix = DEBUG / f"{index:03d}_unexpected_url"
+        try:
+            self.page.screenshot(path=str(prefix.with_suffix(".png")), full_page=True)
+        except Exception:
+            pass
+        try:
+            prefix.with_suffix(".html").write_text(self.page.content(), encoding="utf-8")
+        except Exception:
+            pass
+        try:
+            prefix.with_suffix(".txt").write_text(f"Final URL: {self.page.url}\n", encoding="utf-8")
+        except Exception:
+            pass
+
+    def _provider_rental_days(self):
+        try:
+            return self.page.evaluate(
+                """() => {
+                    const reserva = JSON.parse(sessionStorage.getItem("swi_reserva") || "{}");
+                    return Number(reserva.num_dias) || null;
+                }"""
+            )
+        except Exception:
+            return None
 
     def _vehicle_image(self, card):
         try:

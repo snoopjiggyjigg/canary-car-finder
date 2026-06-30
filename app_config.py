@@ -5,7 +5,7 @@ import sys
 
 APP_CONFIG_PATH = Path("config/app_config.json")
 APP_NAME = "Canary Islands Car Hire Optimiser"
-APP_VERSION = "v1.4.0"
+APP_VERSION = "v1.5.0"
 
 DEFAULT_APP_CONFIG = {
     "app_name": APP_NAME,
